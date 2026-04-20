@@ -48,6 +48,30 @@ venv.bak/
 .coverage
 htmlcov/
 
+# Android & Gradle
+.gradle/
+.buildship/
+.settings/
+.classpath
+.project
+android/.gradle/
+android/.settings/
+android/build/
+flutter_application/android/.gradle/
+flutter_application/android/.settings/
+flutter_application/android/build/
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+pubspec.lock
+
+# Project specific
+proyecto_test/
+*.iml
+
 # Base de datos
 *.db
 *.sqlite

@@ -1,0 +1,605 @@
+{
+  "info": {
+    "_postman_id": "sira-test-collection",
+    "name": "SIRA - Sistema de Recomendaciones Académicas Inteligentes",
+    "description": "Colección Postman para todas las pruebas de API del proyecto SIRA",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Módulo Estudiantes",
+      "item": [
+        {
+          "name": "CP-EST-001: Crear Estudiante Válido",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Juan Carlos Pérez\",\n  \"correo\": \"juan.perez@universidad.edu\",\n  \"contrasena\": \"Pwd123!Secure\",\n  \"carrera_id\": 1\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8000/api/estudiantes",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "estudiantes"]
+            },
+            "description": "Crear nuevo estudiante con todos los datos válidos"
+          }
+        },
+        {
+          "name": "CP-EST-002: Crear Estudiante sin Nombre",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"\",\n  \"correo\": \"test@universidad.edu\",\n  \"contrasena\": \"Pwd123!Test\",\n  \"carrera_id\": 1\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8000/api/estudiantes",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "estudiantes"]
+            },
+            "description": "Debe rechazar - nombre vacío"
+          }
+        },
+        {
+          "name": "CP-EST-003: Email Duplicado",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Maria Garcia\",\n  \"correo\": \"juan.perez@universidad.edu\",\n  \"contrasena\": \"Pwd456!Test\",\n  \"carrera_id\": 1\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8000/api/estudiantes",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "estudiantes"]
+            },
+            "description": "Debe rechazar - email duplicado"
+          }
+        },
+        {
+          "name": "CP-EST-006: Consultar Estudiante Existente",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:8000/api/estudiantes/1",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "estudiantes", "1"]
+            },
+            "description": "Obtener datos de estudiante con ID = 1"
+          }
+        },
+        {
+          "name": "CP-EST-007: Consultar Estudiante Inexistente",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:8000/api/estudiantes/9999",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "estudiantes", "9999"]
+            },
+            "description": "Debe retornar 404 - estudiante no existe"
+          }
+        },
+        {
+          "name": "CP-EST-008: Actualizar Nombre",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Juan Carlos Pérez Ramírez\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8000/api/estudiantes/1",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "estudiantes", "1"]
+            },
+            "description": "Actualizar nombre del estudiante"
+          }
+        },
+        {
+          "name": "CP-EST-013: Listar Estudiantes por Carrera",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:8000/api/estudiantes?carrera_id=1",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "estudiantes"],
+              "query": [
+                {
+                  "key": "carrera_id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Listar todos los estudiantes de carrera 1"
+          }
+        },
+        {
+          "name": "CP-EST-011: Eliminar Estudiante",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "http://localhost:8000/api/estudiantes/5",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "estudiantes", "5"]
+            },
+            "description": "Eliminar estudiante con ID = 5"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Módulo Carreras",
+      "item": [
+        {
+          "name": "CP-CAR-001: Crear Carrera",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Ingeniería en Informática\",\n  \"descripcion\": \"Programa de formación en desarrollo de software\",\n  \"duracion_anos\": 4\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8000/api/carreras",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "carreras"]
+            },
+            "description": "Crear nueva carrera"
+          }
+        },
+        {
+          "name": "CP-CAR-002: Carrera sin Nombre",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"\",\n  \"descripcion\": \"Descripción\",\n  \"duracion_anos\": 4\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8000/api/carreras",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "carreras"]
+            },
+            "description": "Debe rechazar - nombre vacío"
+          }
+        },
+        {
+          "name": "CP-CAR-006: Consultar Carrera",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:8000/api/carreras/1",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "carreras", "1"]
+            },
+            "description": "Obtener datos de carrera"
+          }
+        },
+        {
+          "name": "CP-CAR-012: Listar Todas las Carreras",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:8000/api/carreras",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "carreras"]
+            },
+            "description": "Listar todas las carreras"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Módulo Materias",
+      "item": [
+        {
+          "name": "CP-MAT-001: Crear Materia",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Programación en Python\",\n  \"codigo\": \"PRO-101\",\n  \"carrera_id\": 1,\n  \"creditos\": 4,\n  \"descripcion\": \"Introducción a programación\",\n  \"semestre\": 1\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8000/api/materias",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "materias"]
+            },
+            "description": "Crear nueva materia"
+          }
+        },
+        {
+          "name": "CP-MAT-012: Listar Materias por Carrera",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:8000/api/materias?carrera_id=1",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "materias"],
+              "query": [
+                {
+                  "key": "carrera_id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Listar materias de carrera 1"
+          }
+        },
+        {
+          "name": "CP-MAT-013: Listar Materias por Semestre",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:8000/api/materias?semestre=1",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "materias"],
+              "query": [
+                {
+                  "key": "semestre",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Listar materias del semestre 1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Módulo Calificaciones",
+      "item": [
+        {
+          "name": "CP-CAL-001: Registrar Calificación",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estudiante_id\": 1,\n  \"materia_id\": 1,\n  \"nota_parcial1\": 85.50,\n  \"nota_parcial2\": 90.00,\n  \"semestre\": 1\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8000/api/calificaciones",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "calificaciones"]
+            },
+            "description": "Registrar calificación válida"
+          }
+        },
+        {
+          "name": "CP-CAL-002: Calificación Negativa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estudiante_id\": 1,\n  \"materia_id\": 2,\n  \"nota_parcial1\": -5.0,\n  \"nota_parcial2\": 80.0,\n  \"semestre\": 1\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8000/api/calificaciones",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "calificaciones"]
+            },
+            "description": "Debe rechazar - nota negativa"
+          }
+        },
+        {
+          "name": "CP-CAL-003: Calificación Mayor a 100",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estudiante_id\": 1,\n  \"materia_id\": 2,\n  \"nota_parcial1\": 120.0,\n  \"nota_parcial2\": 80.0,\n  \"semestre\": 1\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8000/api/calificaciones",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "calificaciones"]
+            },
+            "description": "Debe rechazar - nota > 100"
+          }
+        },
+        {
+          "name": "CP-CAL-006: Consultar Calificaciones de Estudiante",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:8000/api/calificaciones?estudiante_id=1",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "calificaciones"],
+              "query": [
+                {
+                  "key": "estudiante_id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Obtener todas las calificaciones de estudiante"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Módulo Recomendaciones",
+      "item": [
+        {
+          "name": "CP-REC-001: Crear Recomendación",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estudiante_id\": 1,\n  \"materia_id\": 1,\n  \"tipo\": \"refuerzo\",\n  \"descripcion\": \"Se recomienda refuerzo en esta materia\",\n  \"prioridad\": \"alta\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8000/api/recomendaciones",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "recomendaciones"]
+            },
+            "description": "Crear nueva recomendación"
+          }
+        },
+        {
+          "name": "CP-REC-006: Consultar Recomendaciones",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:8000/api/recomendaciones?estudiante_id=1",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "recomendaciones"],
+              "query": [
+                {
+                  "key": "estudiante_id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Obtener recomendaciones de estudiante"
+          }
+        },
+        {
+          "name": "CP-REC-012: Filtrar por Tipo",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:8000/api/recomendaciones?tipo=refuerzo",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "recomendaciones"],
+              "query": [
+                {
+                  "key": "tipo",
+                  "value": "refuerzo"
+                }
+              ]
+            },
+            "description": "Filtrar recomendaciones por tipo"
+          }
+        },
+        {
+          "name": "CP-REC-013: Filtrar por Prioridad",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:8000/api/recomendaciones?prioridad=alta",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "recomendaciones"],
+              "query": [
+                {
+                  "key": "prioridad",
+                  "value": "alta"
+                }
+              ]
+            },
+            "description": "Filtrar recomendaciones por prioridad"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pruebas de Validación",
+      "item": [
+        {
+          "name": "CP-EST-004: Email Inválido",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Test User\",\n  \"correo\": \"invalid-email\",\n  \"contrasena\": \"Pwd123!Test\",\n  \"carrera_id\": 1\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8000/api/estudiantes",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "estudiantes"]
+            },
+            "description": "Email sin formato válido"
+          }
+        },
+        {
+          "name": "CP-EST-005: Contraseña Vacía",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Test User\",\n  \"correo\": \"test@universidad.edu\",\n  \"contrasena\": \"\",\n  \"carrera_id\": 1\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8000/api/estudiantes",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "estudiantes"]
+            },
+            "description": "Contraseña obligatoria"
+          }
+        },
+        {
+          "name": "CP-MAT-004: Créditos Negativos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Materia Inválida\",\n  \"codigo\": \"INV-001\",\n  \"carrera_id\": 1,\n  \"creditos\": -5,\n  \"descripcion\": \"Descripción\",\n  \"semestre\": 1\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8000/api/materias",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "materias"]
+            },
+            "description": "Créditos no pueden ser negativos"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Vercel API Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:8000/",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": []
+            },
+            "description": "Verificar que API está operativa"
+          }
+        }
+      ]
+    }
+  ]
+}

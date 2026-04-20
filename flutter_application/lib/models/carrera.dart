@@ -1,19 +1,22 @@
 class Carrera {
-  final int? id;
-  final String nombre;
+  final int? carreraId;
+  final String? nombre;
   final String? descripcion;
+  final int? duracionAnos;
 
   Carrera({
-    this.id,
-    required this.nombre,
+    this.carreraId,
+    this.nombre,
     this.descripcion,
+    this.duracionAnos,
   });
 
   factory Carrera.fromJson(Map<String, dynamic> json) {
     return Carrera(
-      id: json['id'] as int?,
-      nombre: json['nombre'] as String,
-      descripcion: json['descripcion'] as String?,
+      carreraId: json['carrera_id'] as int? ?? json['id'] as int?,
+      nombre: (json['nombre'] ?? '').toString(),
+      descripcion: json['descripcion']?.toString(),
+      duracionAnos: json['duracion_anos'] as int?,
     );
   }
 
@@ -21,6 +24,7 @@ class Carrera {
     return {
       'nombre': nombre,
       'descripcion': descripcion,
+      'duracion_anos': duracionAnos,
     };
   }
 }

@@ -1,29 +1,39 @@
 class Estudiante {
-  final int? id;
+  final int? estudianteId;
   final String nombre;
-  final String email;
-  final int carreraId;
+  final String correo;
+  final String? contrasena;
+  final int? carreraId;
+  final String? carrera;
+  final double? promedioGeneral;
 
   Estudiante({
-    this.id,
+    this.estudianteId,
     required this.nombre,
-    required this.email,
-    required this.carreraId,
+    required this.correo,
+    this.contrasena,
+    this.carreraId,
+    this.carrera,
+    this.promedioGeneral,
   });
 
   factory Estudiante.fromJson(Map<String, dynamic> json) {
     return Estudiante(
-      id: json['id'] as int?,
+      estudianteId: json['estudiante_id'] as int?,
       nombre: json['nombre'] as String,
-      email: json['email'] as String,
-      carreraId: json['carrera_id'] as int,
+      correo: json['correo'] as String,
+      contrasena: json['contrasena'] as String?,
+      carreraId: json['carrera_id'] as int?,
+      carrera: json['carrera'] as String?,
+      promedioGeneral: (json['promedio_general'] as num?)?.toDouble(),
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
       'nombre': nombre,
-      'email': email,
+      'correo': correo,
+      'contrasena': contrasena,
       'carrera_id': carreraId,
     };
   }

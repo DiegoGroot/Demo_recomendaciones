@@ -1,25 +1,40 @@
 class Calificacion {
-  final int? id;
+  final int? calificacionId;
   final int estudianteId;
   final int materiaId;
-  final double calificacion;
-  final String periodo;
+  final double? notaParcial1;
+  final double? notaParcial2;
+  final double? notaFinal;
+  final String estado;
+  final int? semestre;
+  final String? materiaNombre;
+  final String? estudianteNombre;
 
   Calificacion({
-    this.id,
+    this.calificacionId,
     required this.estudianteId,
     required this.materiaId,
-    required this.calificacion,
-    this.periodo = '2024-1',
+    this.notaParcial1,
+    this.notaParcial2,
+    this.notaFinal,
+    this.estado = 'en_curso',
+    this.semestre,
+    this.materiaNombre,
+    this.estudianteNombre,
   });
 
   factory Calificacion.fromJson(Map<String, dynamic> json) {
     return Calificacion(
-      id: json['id'] as int?,
+      calificacionId: json['calificacion_id'] as int?,
       estudianteId: json['estudiante_id'] as int,
       materiaId: json['materia_id'] as int,
-      calificacion: (json['calificacion'] as num).toDouble(),
-      periodo: json['periodo'] as String? ?? '2024-1',
+      notaParcial1: (json['nota_parcial1'] as num?)?.toDouble(),
+      notaParcial2: (json['nota_parcial2'] as num?)?.toDouble(),
+      notaFinal: (json['nota_final'] as num?)?.toDouble(),
+      estado: json['estado'] as String? ?? 'en_curso',
+      semestre: json['semestre'] as int?,
+      materiaNombre: json['materia_nombre'] as String?,
+      estudianteNombre: json['estudiante_nombre'] as String?,
     );
   }
 
@@ -27,8 +42,11 @@ class Calificacion {
     return {
       'estudiante_id': estudianteId,
       'materia_id': materiaId,
-      'calificacion': calificacion,
-      'periodo': periodo,
+      'nota_parcial1': notaParcial1,
+      'nota_parcial2': notaParcial2,
+      'nota_final': notaFinal,
+      'estado': estado,
+      'semestre': semestre,
     };
   }
 }

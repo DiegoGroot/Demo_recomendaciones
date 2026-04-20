@@ -23,7 +23,7 @@ class _CarrerasScreenState extends State<CarrerasScreen> {
 
   void _showDialog({Carrera? carrera}) {
     if (carrera != null) {
-      _nombreController.text = carrera.nombre;
+      _nombreController.text = carrera.nombre ?? '';
       _descripcionController.text = carrera.descripcion ?? '';
       _editingCarrera = carrera;
     } else {
@@ -64,7 +64,8 @@ class _CarrerasScreenState extends State<CarrerasScreen> {
                   descripcion: _descripcionController.text,
                 );
                 if (_editingCarrera != null) {
-                  await ApiService.updateCarrera(_editingCarrera!.id!, carrera);
+                  await ApiService.updateCarrera(
+                      _editingCarrera!.carreraId!, carrera);
                 } else {
                   await ApiService.createCarrera(carrera);
                 }
@@ -128,7 +129,7 @@ class _CarrerasScreenState extends State<CarrerasScreen> {
               itemBuilder: (context, index) {
                 final carrera = carreras[index];
                 return ListTile(
-                  title: Text(carrera.nombre),
+                  title: Text(carrera.nombre ?? 'Sin nombre'),
                   subtitle: Text(carrera.descripcion ?? ''),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -139,7 +140,7 @@ class _CarrerasScreenState extends State<CarrerasScreen> {
                       ),
                       IconButton(
                         icon: const Icon(Icons.delete),
-                        onPressed: () => _deleteCarrera(carrera.id!),
+                        onPressed: () => _deleteCarrera(carrera.carreraId!),
                       ),
                     ],
                   ),

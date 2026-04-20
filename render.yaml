@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: sira-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: DB_HOST
+        value: localhost
+      - key: DB_NAME
+        value: sira
+      - key: PYTHON_VERSION
+        value: "3.11"
+
+# Base de datos (opcional: usar MongoDB Atlas en lugar de MySQL)
+# - type: mongodb
+#   name: sira-mongodb
+#   plan: free

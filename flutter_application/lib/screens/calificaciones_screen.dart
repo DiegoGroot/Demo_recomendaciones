@@ -32,8 +32,8 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
 
   void _showDialog({Calificacion? calificacion}) {
     if (calificacion != null) {
-      _calificacionController.text = calificacion.calificacion.toString();
-      _periodoController.text = calificacion.periodo;
+      _calificacionController.text = calificacion.notaFinal?.toString() ?? '';
+      _periodoController.text = 'Semestre ${calificacion.semestre}';
       _selectedEstudianteId = calificacion.estudianteId;
       _selectedMateriaId = calificacion.materiaId;
       _editingCalificacion = calificacion;
@@ -61,7 +61,7 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                     value: _selectedEstudianteId,
                     items: snapshot.data!
                         .map((e) => DropdownMenuItem(
-                              value: e.id,
+                              value: e.estudianteId,
                               child: Text(e.nombre),
                             ))
                         .toList(),
@@ -84,7 +84,7 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                     value: _selectedMateriaId,
                     items: snapshot.data!
                         .map((m) => DropdownMenuItem(
-                              value: m.id,
+                              value: m.materiaId,
                               child: Text(m.nombre),
                             ))
                         .toList(),
@@ -122,11 +122,11 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                 final calificacion = Calificacion(
                   estudianteId: _selectedEstudianteId!,
                   materiaId: _selectedMateriaId!,
-                  calificacion: double.parse(_calificacionController.text),
-                  periodo: _periodoController.text,
+                  notaFinal: double.parse(_calificacionController.text),
+                  semestre: int.tryParse(_periodoController.text.replaceAll(RegExp(r'\D'), '')) ?? 1,
                 );
                 if (_editingCalificacion != null) {
-                  await ApiService.updateCalificacion(_editingCalificacion!.id!, calificacion);
+                  await ApiService.updateCalificacion(_editingCalificacion!.calificacionId!, calificacion);
                 } else {
                   await ApiService.createCalificacion(calificacion);
                 }
@@ -191,7 +191,7 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                 final calificacion = calificaciones[index];
                 return ListTile(
                   title: Text('Estudiante ${calificacion.estudianteId} - Materia ${calificacion.materiaId}'),
-                  subtitle: Text('Calificación: ${calificacion.calificacion}, Período: ${calificacion.periodo}'),
+                  subtitle: Text('Nota Final: ${calificacion.notaFinal ?? 'N/A'}, Semestre: ${calificacion.semestre}'),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -201,7 +201,7 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                       ),
                       IconButton(
                         icon: const Icon(Icons.delete),
-                        onPressed: () => _deleteCalificacion(calificacion.id!),
+                        onPressed: () => _deleteCalificacion(calificacion.calificacionId!),
                       ),
                     ],
                   ),

@@ -1,110 +1,207 @@
 -- =====================================================
--- SCRIPT DE CREACIÓN DE BASE DE DATOS
--- API de Recomendaciones Escolares
+-- SCRIPT DE CREACIÓN DE BASE DE DATOS SIRA
+-- Sistema de Recomendaciones Académicas Inteligentes
 -- =====================================================
 
 -- Crear base de datos
-CREATE DATABASE IF NOT EXISTS escuela_recomendaciones;
-USE escuela_recomendaciones;
+CREATE DATABASE IF NOT EXISTS sira;
+USE sira;
 
 -- =====================================================
--- TABLA: ESCUELAS
+-- TABLA: CARRERAS
 -- =====================================================
-CREATE TABLE IF NOT EXISTS escuelas (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    nombre VARCHAR(100) NOT NULL UNIQUE,
-    ciudad VARCHAR(100),
-    nivel VARCHAR(50),
-    calificacion DECIMAL(3,2) DEFAULT 0.00,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_ciudad (ciudad),
-    INDEX idx_nivel (nivel)
+CREATE TABLE IF NOT EXISTS carrera (
+    carrera_id INT AUTO_INCREMENT PRIMARY KEY,
+    nombre VARCHAR(150) NOT NULL UNIQUE,
+    descripcion TEXT,
+    duracion_anos INT DEFAULT 4,
+    creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_nombre (nombre)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================
+-- TABLA: ESTUDIANTES
+-- =====================================================
+CREATE TABLE IF NOT EXISTS estudiante (
+    estudiante_id INT AUTO_INCREMENT PRIMARY KEY,
+    nombre VARCHAR(150) NOT NULL,
+    correo VARCHAR(100) NOT NULL UNIQUE,
+    contrasena VARCHAR(255) NOT NULL,
+    carrera_id INT,
+    promedio_general DECIMAL(3, 2) DEFAULT 0.00,
+    creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (carrera_id) REFERENCES carrera(carrera_id) ON DELETE SET NULL,
+    INDEX idx_correo (correo),
+    INDEX idx_carrera_id (carrera_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================
+-- TABLA: MATERIAS
+-- =====================================================
+CREATE TABLE IF NOT EXISTS materia (
+    materia_id INT AUTO_INCREMENT PRIMARY KEY,
+    nombre VARCHAR(150) NOT NULL,
+    codigo VARCHAR(50) NOT NULL UNIQUE,
+    carrera_id INT NOT NULL,
+    creditos INT DEFAULT 3,
+    descripcion TEXT,
+    semestre INT DEFAULT 1,
+    creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (carrera_id) REFERENCES carrera(carrera_id) ON DELETE CASCADE,
+    INDEX idx_codigo (codigo),
+    INDEX idx_carrera_id (carrera_id),
+    INDEX idx_semestre (semestre)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================
+-- TABLA: CALIFICACIONES
+-- =====================================================
+CREATE TABLE IF NOT EXISTS calificacion (
+    calificacion_id INT AUTO_INCREMENT PRIMARY KEY,
+    estudiante_id INT NOT NULL,
+    materia_id INT NOT NULL,
+    nota_parcial1 DECIMAL(3, 2) DEFAULT 0.00,
+    nota_parcial2 DECIMAL(3, 2) DEFAULT 0.00,
+    nota_final DECIMAL(3, 2) DEFAULT 0.00,
+    estado VARCHAR(20) DEFAULT 'en_curso',
+    semestre INT,
+    creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (estudiante_id) REFERENCES estudiante(estudiante_id) ON DELETE CASCADE,
+    FOREIGN KEY (materia_id) REFERENCES materia(materia_id) ON DELETE CASCADE,
+    INDEX idx_estudiante_id (estudiante_id),
+    INDEX idx_materia_id (materia_id),
+    INDEX idx_estado (estado),
+    UNIQUE KEY unique_student_subject (estudiante_id, materia_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================
 -- TABLA: RECOMENDACIONES
 -- =====================================================
-CREATE TABLE IF NOT EXISTS recomendaciones (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    escuela_id INT NOT NULL,
-    estudiante VARCHAR(100) NOT NULL,
-    motivo TEXT,
-    calificacion INT CHECK(calificacion >= 1 AND calificacion <= 5),
+CREATE TABLE IF NOT EXISTS recomendacion (
+    recomendacion_id INT AUTO_INCREMENT PRIMARY KEY,
+    estudiante_id INT NOT NULL,
+    materia_id INT,
+    tipo_recomendacion VARCHAR(50) NOT NULL,
+    descripcion TEXT NOT NULL,
+    prioridad VARCHAR(20) DEFAULT 'media',
     estado VARCHAR(20) DEFAULT 'activa',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (escuela_id) REFERENCES escuelas(id) ON DELETE CASCADE,
-    INDEX idx_escuela_id (escuela_id),
-    INDEX idx_calificacion (calificacion),
-    INDEX idx_estado (estado),
-    INDEX idx_created_at (created_at)
+    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (estudiante_id) REFERENCES estudiante(estudiante_id) ON DELETE CASCADE,
+    FOREIGN KEY (materia_id) REFERENCES materia(materia_id) ON DELETE SET NULL,
+    INDEX idx_estudiante_id (estudiante_id),
+    INDEX idx_tipo_recomendacion (tipo_recomendacion),
+    INDEX idx_prioridad (prioridad),
+    INDEX idx_estado (estado)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================
+-- TABLA: AUDITORÍA
+-- =====================================================
+CREATE TABLE IF NOT EXISTS auditoria (
+    auditoria_id INT AUTO_INCREMENT PRIMARY KEY,
+    tabla_afectada VARCHAR(100),
+    accion VARCHAR(50),
+    id_registro INT,
+    datos_antiguos JSON,
+    datos_nuevos JSON,
+    usuario VARCHAR(100),
+    fecha_accion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_tabla (tabla_afectada),
+    INDEX idx_fecha (fecha_accion)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================
 -- DATOS DE EJEMPLO
 -- =====================================================
 
--- Insertar escuelas de ejemplo
-INSERT INTO escuelas (nombre, ciudad, nivel, calificacion) VALUES
-('Escuela Primaria Central', 'Lima', 'primaria', 4.7),
-('Colegio Nacional Secundario', 'Lima', 'secundaria', 4.5),
-('Instituto Técnico Profesional', 'Arequipa', 'técnico', 4.3),
-('Escuela Rural San Martín', 'Ayacucho', 'primaria', 3.8),
-('Colegio Bilingüe Virtual', 'Lima', 'secundaria', 4.9);
+-- Carreras
+INSERT INTO carrera (nombre, descripcion, duracion_anos) VALUES
+('Ingeniería de Sistemas', 'Carrera de Ingeniería enfocada en sistemas computacionales', 4),
+('Administración de Empresas', 'Carrera de ciencias empresariales', 4),
+('Psicología', 'Carrera de ciencias de la salud y comportamiento', 5),
+('Contabilidad', 'Carrera de ciencias contables y financieras', 4);
 
--- Insertar recomendaciones de ejemplo
-INSERT INTO recomendaciones (escuela_id, estudiante, motivo, calificacion, estado) VALUES
-(1, 'Juan Pérez López', 'Excelente educación y profesores dedicados', 5, 'activa'),
-(1, 'María García Sánchez', 'Buenas instalaciones y ambiente seguro', 4, 'activa'),
-(2, 'Carlos Rodríguez', 'Programa académico integral', 5, 'activa'),
-(2, 'Laura Martínez', 'Biblioteca bien equipada', 4, 'actualizada'),
-(3, 'Pedro Flores', 'Formación técnica de calidad', 4, 'activa'),
-(4, 'Ana Torres', 'Dedicados a estudiantes de zonas rurales', 3, 'activa'),
-(5, 'Roberto Soto', 'Capacidades en idiomas excepcionales', 5, 'activa');
+-- Estudiantes (ejemplo)
+INSERT INTO estudiante (nombre, correo, contrasena, carrera_id, promedio_general) VALUES
+('Juan Pérez', 'juan.perez@email.com', 'hash_password_123', 1, 3.8),
+('María García', 'maria.garcia@email.com', 'hash_password_456', 2, 3.5),
+('Carlos López', 'carlos.lopez@email.com', 'hash_password_789', 1, 3.2);
+
+-- Materias (ejemplo)
+INSERT INTO materia (nombre, codigo, carrera_id, creditos, semestre) VALUES
+('Programación I', 'PROG101', 1, 4, 1),
+('Matemáticas Discretas', 'MAT201', 1, 3, 2),
+('Algoritmos', 'PROG202', 1, 4, 2),
+('Bases de Datos', 'PROG301', 1, 4, 3),
+('Cálculo I', 'MAT101', 2, 3, 1),
+('Contabilidad General', 'CONT101', 4, 4, 1);
+
+-- Calificaciones (ejemplo)
+INSERT INTO calificacion (estudiante_id, materia_id, nota_parcial1, nota_parcial2, nota_final, estado, semestre) VALUES
+(1, 1, 4.0, 3.8, 3.9, 'aprobado', 1),
+(1, 2, 3.5, 3.7, 3.6, 'aprobado', 2),
+(2, 5, 3.2, 3.4, 3.3, 'aprobado', 1),
+(3, 1, 2.8, 2.9, 2.85, 'aprobado', 1);
+
+-- Recomendaciones (ejemplo)
+INSERT INTO recomendacion (estudiante_id, materia_id, tipo_recomendacion, descripcion, prioridad, estado) VALUES
+(1, 2, 'mejora_academica', 'Considera usar gráficos para visualizar conceptos de matemáticas discretas', 'media', 'activa'),
+(2, 5, 'tutoria', 'Se recomienda tutorías en cálculo para fortalecer bases matemáticas', 'alta', 'activa'),
+(3, 1, 'recuperacion', 'Necesita refuerzo en conceptos básicos de programación', 'alta', 'activa');
 
 -- =====================================================
--- VISTAS ÚTILES (OPCIONAL)
+-- VISTAS ÚTILES
 -- =====================================================
 
--- Vista para obtener recomendaciones con datos de escuela
-CREATE OR REPLACE VIEW v_recomendaciones_con_escuela AS
+-- Vista para obtener recomendaciones con datos del estudiante
+CREATE OR REPLACE VIEW v_recomendaciones_estudiantes AS
 SELECT 
-    r.id,
-    r.escuela_id,
-    e.nombre as escuela_nombre,
-    e.ciudad,
-    e.nivel,
-    r.estudiante,
-    r.motivo,
-    r.calificacion,
+    r.recomendacion_id,
+    r.estudiante_id,
+    e.nombre as estudiante_nombre,
+    e.correo,
+    r.materia_id,
+    m.nombre as materia_nombre,
+    m.codigo,
+    r.tipo_recomendacion,
+    r.descripcion,
+    r.prioridad,
     r.estado,
-    r.created_at
-FROM recomendaciones r
-JOIN escuelas e ON r.escuela_id = e.id
-ORDER BY r.created_at DESC;
+    r.fecha_creacion
+FROM recomendacion r
+JOIN estudiante e ON r.estudiante_id = e.estudiante_id
+LEFT JOIN materia m ON r.materia_id = m.materia_id
+ORDER BY r.fecha_creacion DESC;
 
--- Vista para estadísticas por escuela
-CREATE OR REPLACE VIEW v_estadisticas_escuelas AS
+-- Vista para estadísticas de estudiantes
+CREATE OR REPLACE VIEW v_estadisticas_estudiantes AS
 SELECT 
-    e.id,
+    e.estudiante_id,
     e.nombre,
-    e.ciudad,
-    e.nivel,
-    COUNT(r.id) as total_recomendaciones,
-    AVG(r.calificacion) as calificacion_promedio,
-    MAX(r.calificacion) as calificacion_maxima,
-    MIN(r.calificacion) as calificacion_minima
-FROM escuelas e
-LEFT JOIN recomendaciones r ON e.id = r.escuela_id
-GROUP BY e.id, e.nombre, e.ciudad, e.nivel;
+    e.correo,
+    c.nombre as carrera,
+    COUNT(cal.calificacion_id) as materias_cursadas,
+    AVG(cal.nota_final) as promedio_actual,
+    COUNT(r.recomendacion_id) as total_recomendaciones,
+    SUM(CASE WHEN r.prioridad = 'alta' THEN 1 ELSE 0 END) as recomendaciones_alta_prioridad
+FROM estudiante e
+LEFT JOIN carrera c ON e.carrera_id = c.carrera_id
+LEFT JOIN calificacion cal ON e.estudiante_id = cal.estudiante_id AND cal.estado = 'aprobado'
+LEFT JOIN recomendacion r ON e.estudiante_id = r.estudiante_id AND r.estado = 'activa'
+GROUP BY e.estudiante_id, e.nombre, e.correo, c.nombre;
 
 -- =====================================================
 -- PROCEDIMIENTOS ALMACENADOS (OPCIONAL)
 -- =====================================================
 
 -- Procedimiento para obtener recomendaciones por rango de calificación
+DROP PROCEDURE IF EXISTS sp_recomendaciones_por_calificacion;
 DELIMITER //
-CREATE PROCEDURE IF NOT EXISTS sp_recomendaciones_por_calificacion(
+CREATE PROCEDURE sp_recomendaciones_por_calificacion(
     IN p_min_cal INT,
     IN p_max_cal INT
 )
@@ -116,8 +213,9 @@ END//
 DELIMITER ;
 
 -- Procedimiento para obtener estadísticas de una escuela
+DROP PROCEDURE IF EXISTS sp_estadisticas_escuela;
 DELIMITER //
-CREATE PROCEDURE IF NOT EXISTS sp_estadisticas_escuela(
+CREATE PROCEDURE sp_estadisticas_escuela(
     IN p_escuela_id INT
 )
 BEGIN
@@ -130,12 +228,7 @@ DELIMITER ;
 -- ÍNDICES ADICIONALES PARA OPTIMIZACIÓN
 -- =====================================================
 
--- Los índices principales ya están creados en las tablas,
--- pero aquí hay algunos índices adicionales opcionales
-
--- Índice combinado para búsquedas frecuentes
-ALTER TABLE recomendaciones ADD INDEX idx_escuela_estado (escuela_id, estado);
-ALTER TABLE recomendaciones ADD INDEX idx_calificacion_estado (calificacion, estado);
+-- Los índices principales ya están creados en las tablas.
 
 -- =====================================================
 -- COMENTARIOS
