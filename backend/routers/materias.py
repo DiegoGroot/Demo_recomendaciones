@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from database import get_db
+from mysql.connector import errors as mysql_errors
 
 router = APIRouter()
 
@@ -16,45 +17,118 @@ class MateriaUpdate(BaseModel):
 @router.get("/")
 def listar_materias(db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM academico.materia")
-    return cursor.fetchall()
+    try:
+        cursor.execute("SELECT * FROM sira.materia")
+        result = cursor.fetchall()
+        cursor.close()
+        return result
+    except Exception as e:
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error al listar materias: {str(e)}")
 
 @router.get("/{materia_id}")
 def obtener_materia(materia_id: int, db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM academico.materia WHERE materia_id = %s", (materia_id,))
-    row = cursor.fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Materia no encontrada")
-    return row
+    try:
+        cursor.execute("SELECT * FROM sira.materia WHERE materia_id = %s", (materia_id,))
+        row = cursor.fetchone()
+        cursor.close()
+        if not row:
+            raise HTTPException(status_code=404, detail="Materia no encontrada")
+        return row
+    except HTTPException:
+        raise
+    except Exception as e:
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error al obtener materia: {str(e)}")
 
 @router.post("/", status_code=201)
 def crear_materia(data: MateriaCreate, db=Depends(get_db)):
-    cursor = db.cursor()
-    cursor.execute(
-        "INSERT INTO academico.materia (nombre, descripcion) VALUES (%s, %s)",
-        (data.nombre, data.descripcion)
-    )
-    db.commit()
-    return {"message": "Materia creada", "id": cursor.lastrowid}
+    cursor = db.cursor(dictionary=True)
+    try:
+        codigo = data.nombre.upper()[:20]
+        cursor.execute("SELECT materia_id FROM sira.materia WHERE codigo = %s", (codigo,))
+        if cursor.fetchone():
+            cursor.close()
+            raise HTTPException(status_code=409, detail="Ya existe una materia con ese código")
+        
+        cursor.execute(
+            "INSERT INTO sira.materia (nombre, codigo, carrera_id, descripcion) VALUES (%s, %s, %s, %s)",
+            (data.nombre, codigo, 1, data.descripcion)
+        )
+        db.commit()
+        id_creada = cursor.lastrowid
+        cursor.execute("SELECT * FROM sira.materia WHERE materia_id = %s", (id_creada,))
+        materia = cursor.fetchone()
+        cursor.close()
+        return materia if materia else {"materia_id": id_creada, "nombre": data.nombre}
+    except HTTPException:
+        cursor.close()
+        raise
+    except mysql_errors.IntegrityError as e:
+        db.rollback()
+        cursor.close()
+        if "codigo" in str(e):
+            raise HTTPException(status_code=409, detail="Ya existe una materia con ese código")
+        raise HTTPException(status_code=409, detail="Error de integridad: datos duplicados")
+    except Exception as e:
+        db.rollback()
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error al crear materia: {str(e)}")
 
 @router.put("/{materia_id}")
 def actualizar_materia(materia_id: int, data: MateriaUpdate, db=Depends(get_db)):
-    campos = {k: v for k, v in data.dict().items() if v is not None}
-    if not campos:
-        raise HTTPException(status_code=400, detail="Sin datos para actualizar")
-    set_clause = ", ".join([f"{k} = %s" for k in campos])
-    cursor = db.cursor()
-    cursor.execute(
-        f"UPDATE academico.materia SET {set_clause} WHERE materia_id = %s",
-        (*campos.values(), materia_id)
-    )
-    db.commit()
-    return {"message": "Materia actualizada"}
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT materia_id FROM sira.materia WHERE materia_id = %s", (materia_id,))
+        if not cursor.fetchone():
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Materia no encontrada")
+        
+        campos = {k: v for k, v in data.dict().items() if v is not None}
+        if not campos:
+            cursor.close()
+            raise HTTPException(status_code=400, detail="Sin datos para actualizar")
+        
+        set_clause = ", ".join([f"{k} = %s" for k in campos])
+        cursor.execute(
+            f"UPDATE sira.materia SET {set_clause} WHERE materia_id = %s",
+            (*campos.values(), materia_id)
+        )
+        db.commit()
+        cursor.execute("SELECT * FROM sira.materia WHERE materia_id = %s", (materia_id,))
+        materia = cursor.fetchone()
+        cursor.close()
+        return materia if materia else {"message": "Materia actualizada"}
+    except HTTPException:
+        cursor.close()
+        raise
+    except mysql_errors.IntegrityError as e:
+        db.rollback()
+        cursor.close()
+        raise HTTPException(status_code=409, detail="Error de integridad: datos duplicados o inválidos")
+    except Exception as e:
+        db.rollback()
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error al actualizar: {str(e)}")
 
 @router.delete("/{materia_id}")
 def eliminar_materia(materia_id: int, db=Depends(get_db)):
     cursor = db.cursor()
-    cursor.execute("DELETE FROM academico.materia WHERE materia_id = %s", (materia_id,))
-    db.commit()
-    return {"message": "Materia eliminada"}
+    try:
+        cursor.execute("SELECT materia_id FROM sira.materia WHERE materia_id = %s", (materia_id,))
+        if not cursor.fetchone():
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Materia no encontrada")
+        
+        cursor.execute("DELETE FROM sira.materia WHERE materia_id = %s", (materia_id,))
+        db.commit()
+        cursor.close()
+        return {"message": "Materia eliminada correctamente"}
+    except HTTPException:
+        cursor.close()
+        raise
+    except Exception as e:
+        db.rollback()
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error al eliminar: {str(e)}")

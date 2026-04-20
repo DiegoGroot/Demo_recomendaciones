@@ -23,61 +23,108 @@ def calcular_promedio(p1, p2, p3):
 @router.get("/")
 def listar_calificaciones(db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT c.*, e.nombre as estudiante, m.nombre as materia
-        FROM evaluacion.calificacion_materia c
-        JOIN estudiantes.inscripcion_materia i ON c.inscripcion_id = i.inscripcion_id
-        JOIN estudiantes.estudiante e ON i.estudiante_id = e.estudiante_id
-        JOIN academico.materia m ON i.materia_id = m.materia_id
-    """)
-    return cursor.fetchall()
+    try:
+        cursor.execute("""
+            SELECT c.*, e.nombre as estudiante, m.nombre as materia
+            FROM sira.calificacion c
+            JOIN sira.estudiante e ON c.estudiante_id = e.estudiante_id
+            JOIN sira.materia m ON c.materia_id = m.materia_id
+        """)
+        result = cursor.fetchall()
+        cursor.close()
+        return result
+    except Exception as e:
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error al listar calificaciones: {str(e)}")
 
 @router.get("/estudiante/{estudiante_id}")
 def calificaciones_por_estudiante(estudiante_id: int, db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT c.*, m.nombre as materia
-        FROM evaluacion.calificacion_materia c
-        JOIN estudiantes.inscripcion_materia i ON c.inscripcion_id = i.inscripcion_id
-        JOIN academico.materia m ON i.materia_id = m.materia_id
-        WHERE i.estudiante_id = %s
-    """, (estudiante_id,))
-    return cursor.fetchall()
+    try:
+        cursor.execute("""
+            SELECT c.*, m.nombre as materia
+            FROM sira.calificacion c
+            JOIN sira.materia m ON c.materia_id = m.materia_id
+            WHERE c.estudiante_id = %s
+        """, (estudiante_id,))
+        result = cursor.fetchall()
+        cursor.close()
+        return result
+    except Exception as e:
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error al listar calificaciones: {str(e)}")
 
 @router.post("/", status_code=201)
 def crear_calificacion(data: CalificacionCreate, db=Depends(get_db)):
     promedio = calcular_promedio(data.parcial1, data.parcial2, data.parcial3)
-    cursor = db.cursor()
-    cursor.execute("""
-        INSERT INTO evaluacion.calificacion_materia (inscripcion_id, parcial1, parcial2, parcial3, promedio)
-        VALUES (%s, %s, %s, %s, %s)
-    """, (data.inscripcion_id, data.parcial1, data.parcial2, data.parcial3, promedio))
-    db.commit()
-    return {"message": "Calificación registrada", "id": cursor.lastrowid, "promedio": promedio}
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            INSERT INTO sira.calificacion (estudiante_id, materia_id, nota_parcial1, nota_parcial2, nota_final)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (data.inscripcion_id, data.parcial1, data.parcial2, data.parcial3, promedio))
+        db.commit()
+        id_creada = cursor.lastrowid
+        cursor.execute("""
+            SELECT c.*, e.nombre as estudiante, m.nombre as materia
+            FROM sira.calificacion c
+            JOIN sira.estudiante e ON c.estudiante_id = e.estudiante_id
+            JOIN sira.materia m ON c.materia_id = m.materia_id
+            WHERE c.calificacion_id = %s
+        """, (id_creada,))
+        calificacion = cursor.fetchone()
+        cursor.close()
+        return calificacion if calificacion else {"calificacion_id": id_creada, "promedio": promedio}
+    except Exception as e:
+        db.rollback()
+        cursor.close()
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.put("/{calificacion_id}")
 def actualizar_calificacion(calificacion_id: int, data: CalificacionUpdate, db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM evaluacion.calificacion_materia WHERE calificacion_id = %s", (calificacion_id,))
-    actual = cursor.fetchone()
-    if not actual:
-        raise HTTPException(status_code=404, detail="Calificación no encontrada")
-    p1 = data.parcial1 if data.parcial1 is not None else actual["parcial1"]
-    p2 = data.parcial2 if data.parcial2 is not None else actual["parcial2"]
-    p3 = data.parcial3 if data.parcial3 is not None else actual["parcial3"]
-    promedio = calcular_promedio(p1, p2, p3)
-    cursor2 = db.cursor()
-    cursor2.execute("""
-        UPDATE evaluacion.calificacion_materia
-        SET parcial1=%s, parcial2=%s, parcial3=%s, promedio=%s
-        WHERE calificacion_id=%s
-    """, (p1, p2, p3, promedio, calificacion_id))
-    db.commit()
-    return {"message": "Calificación actualizada", "promedio": promedio}
+    try:
+        cursor.execute("SELECT * FROM sira.calificacion WHERE calificacion_id = %s", (calificacion_id,))
+        actual = cursor.fetchone()
+        if not actual:
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Calificación no encontrada")
+        p1 = data.parcial1 if data.parcial1 is not None else actual["nota_parcial1"]
+        p2 = data.parcial2 if data.parcial2 is not None else actual["nota_parcial2"]
+        p3 = data.parcial3 if data.parcial3 is not None else 0
+        promedio = calcular_promedio(p1, p2, p3)
+        cursor.execute("""
+            UPDATE sira.calificacion
+            SET nota_parcial1=%s, nota_parcial2=%s, nota_final=%s
+            WHERE calificacion_id=%s
+        """, (p1, p2, promedio, calificacion_id))
+        db.commit()
+        cursor.execute("""
+            SELECT c.*, e.nombre as estudiante, m.nombre as materia
+            FROM sira.calificacion c
+            JOIN sira.estudiante e ON c.estudiante_id = e.estudiante_id
+            JOIN sira.materia m ON c.materia_id = m.materia_id
+            WHERE c.calificacion_id = %s
+        """, (calificacion_id,))
+        calificacion = cursor.fetchone()
+        cursor.close()
+        return calificacion if calificacion else {"message": "Calificación actualizada", "promedio": promedio}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        cursor.close()
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.delete("/{calificacion_id}")
 def eliminar_calificacion(calificacion_id: int, db=Depends(get_db)):
     cursor = db.cursor()
-    cursor.execute("DELETE FROM evaluacion.calificacion_materia WHERE calificacion_id = %s", (calificacion_id,))
-    db.commit()
-    return {"message": "Calificación eliminada"}
+    try:
+        cursor.execute("DELETE FROM sira.calificacion WHERE calificacion_id = %s", (calificacion_id,))
+        db.commit()
+        cursor.close()
+        return {"message": "Calificación eliminada"}
+    except Exception as e:
+        db.rollback()
+        cursor.close()
+        raise HTTPException(status_code=400, detail=str(e))
