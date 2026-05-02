@@ -464,6 +464,121 @@ class ApiService {
     }
   }
 
+  // ==================== RECOMENDACIONES AUTOMÁTICAS ====================
+  static Future<Map<String, dynamic>> generarRecomendacionesAutomaticas(
+      int estudianteId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/recomendaciones-automaticas/generar/$estudianteId'),
+        headers: {'Content-Type': 'application/json'},
+      ).timeout(const Duration(seconds: timeoutSeconds));
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      throw Exception(
+          'Error al generar recomendaciones: ${response.statusCode}');
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
+  static Future<List<Recomendacion>> getRecomendacionesSugeridas(
+      int estudianteId) async {
+    try {
+      final response = await http
+          .get(Uri.parse(
+              '$baseUrl/recomendaciones-automaticas/sugerencias/$estudianteId'))
+          .timeout(const Duration(seconds: timeoutSeconds));
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
+        return data
+            .map((r) => Recomendacion.fromJson(r as Map<String, dynamic>))
+            .toList();
+      }
+      throw Exception(
+          'Error al cargar recomendaciones sugeridas: ${response.statusCode}');
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> guardarRespuestasPersonales(
+      int estudianteId, List<Map<String, String>> respuestas) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse(
+                '$baseUrl/recomendaciones-automaticas/preguntas-personales/$estudianteId'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(respuestas),
+          )
+          .timeout(const Duration(seconds: timeoutSeconds));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      throw Exception('Error al guardar respuestas: ${response.statusCode}');
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> obtenerRespuestasPersonales(
+      int estudianteId) async {
+    try {
+      final response = await http
+          .get(Uri.parse(
+              '$baseUrl/recomendaciones-automaticas/preguntas-personales/$estudianteId'))
+          .timeout(const Duration(seconds: timeoutSeconds));
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
+        return data.map((r) => r as Map<String, dynamic>).toList();
+      }
+      return [];
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
+  // ==================== ACTUALIZAR NOMBRE DE USUARIO ====================
+  static Future<Map<String, dynamic>> actualizarNombreEstudiante(
+      int estudianteId, String nuevoNombre) async {
+    try {
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl/estudiantes/$estudianteId/nombre'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'nombre': nuevoNombre}),
+          )
+          .timeout(const Duration(seconds: timeoutSeconds));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      throw Exception('Error al actualizar nombre: ${response.statusCode}');
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
+  // ==================== ROLES ====================
+  static Future<Map<String, dynamic>> cambiarRolEstudiante(
+      int estudianteId, String nuevoRol) async {
+    try {
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl/estudiantes/$estudianteId/rol'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'rol': nuevoRol}),
+          )
+          .timeout(const Duration(seconds: timeoutSeconds));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      throw Exception('Error al cambiar rol: ${response.statusCode}');
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
   // ==================== HEALTH CHECK ====================
   static Future<bool> checkConnection() async {
     try {

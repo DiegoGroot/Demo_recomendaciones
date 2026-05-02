@@ -23,7 +23,7 @@ class RecomendacionUpdate(BaseModel):
 
 
 # GET todas las recomendaciones
-@router.get("/")
+@router.get("")
 def listar_recomendaciones(
     estudiante_id: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),

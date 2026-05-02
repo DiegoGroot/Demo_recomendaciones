@@ -22,7 +22,7 @@ class LoginData(BaseModel):
     contrasena: str
 
 # GET todos
-@router.get("/")
+@router.get("")
 def listar_estudiantes(db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
     try:
@@ -61,7 +61,7 @@ def obtener_estudiante(estudiante_id: int, db=Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error al obtener estudiante: {str(e)}")
 
 # POST crear
-@router.post("/", status_code=201)
+@router.post("", status_code=201)
 def crear_estudiante(data: EstudianteCreate, db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
     try:
@@ -204,3 +204,48 @@ def login(data: LoginData, db=Depends(get_db)):
     except Exception as e:
         cursor.close()
         raise HTTPException(status_code=500, detail=f"Error en login: {str(e)}")
+
+
+# PUT actualizar nombre de usuario específicamente
+@router.put("/{estudiante_id}/nombre")
+def actualizar_nombre_estudiante(estudiante_id: int, data: dict, db=Depends(get_db)):
+    """Endpoint específico para actualizar el nombre del usuario"""
+    cursor = db.cursor(dictionary=True)
+    try:
+        if "nombre" not in data or not data["nombre"]:
+            cursor.close()
+            raise HTTPException(status_code=400, detail="El nombre no puede estar vacío")
+        
+        # Verificar que el estudiante existe
+        cursor.execute("SELECT estudiante_id FROM sira.estudiante WHERE estudiante_id = %s", (estudiante_id,))
+        if not cursor.fetchone():
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Estudiante no encontrado")
+        
+        # Actualizar nombre
+        cursor.execute(
+            "UPDATE sira.estudiante SET nombre = %s WHERE estudiante_id = %s",
+            (data["nombre"], estudiante_id)
+        )
+        db.commit()
+        
+        # Obtener el estudiante actualizado
+        cursor.execute("""
+            SELECT e.estudiante_id, e.nombre, e.correo, e.carrera_id
+            FROM sira.estudiante e
+            WHERE e.estudiante_id = %s
+        """, (estudiante_id,))
+        estudiante = cursor.fetchone()
+        cursor.close()
+        return {
+            "status": "éxito",
+            "mensaje": "Nombre actualizado correctamente",
+            "estudiante": estudiante
+        }
+    except HTTPException:
+        cursor.close()
+        raise
+    except Exception as e:
+        db.rollback()
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error al actualizar nombre: {str(e)}")

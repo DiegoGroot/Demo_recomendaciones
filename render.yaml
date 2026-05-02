@@ -3,16 +3,43 @@ services:
     name: sira-api
     runtime: docker
     dockerfilePath: ./Dockerfile
-    autoDeploy: true
+    autoDeploy: false
+    
+    # Puerto expuesto
+    ports:
+      - port: 8000
+    
+    # Healthcheck
+    healthCheckPath: /
+    
+    # Variables de entorno (REEMPLAZAR CON TUS VALORES)
     envVars:
       - key: DB_HOST
-        value: localhost
+        value: localhost  # Cambiar por tu host MySQL
+      - key: DB_USER
+        value: sira_user  # Cambiar por tu usuario
+      - key: DB_PASSWORD
+        sync: false  # No sincronizar en control de versiones
       - key: DB_NAME
         value: sira
-      - key: PYTHON_VERSION
-        value: "3.11"
+      - key: DB_PORT
+        value: "3306"
+    
+    # Comandos de build (opcional si no usas Dockerfile)
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port 8000
+    
+    # Limites de recursos (free tier)
+    plan: starter
+    
+    # Monitoreo
+    maxShutdownDelay: 30
 
-# Base de datos (opcional: usar MongoDB Atlas en lugar de MySQL)
-# - type: mongodb
-#   name: sira-mongodb
-#   plan: free
+# Alternativa: Usar MySQL en Railway en lugar de hosteado
+# Si deseas agregar MySQL directamente:
+# databases:
+#   - name: sira-mysql
+#     provider: mysql
+#     version: "8.0"
+#     plan: free
+

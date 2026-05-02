@@ -14,7 +14,7 @@ class CarreraUpdate(BaseModel):
     nombre: Optional[str] = None
     descripcion: Optional[str] = None
 
-@router.get("/")
+@router.get("")
 def listar_carreras(db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
     try:
@@ -42,7 +42,7 @@ def obtener_carrera(carrera_id: int, db=Depends(get_db)):
         cursor.close()
         raise HTTPException(status_code=500, detail=f"Error al obtener carrera: {str(e)}")
 
-@router.post("/", status_code=201)
+@router.post("", status_code=201)
 def crear_carrera(data: CarreraCreate, db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
     try:

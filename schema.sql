@@ -99,6 +99,20 @@ CREATE TABLE IF NOT EXISTS recomendacion (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================
+-- TABLA: RESPUESTAS PERSONALES
+-- =====================================================
+CREATE TABLE IF NOT EXISTS respuesta_personal (
+    respuesta_id INT AUTO_INCREMENT PRIMARY KEY,
+    estudiante_id INT NOT NULL,
+    pregunta_clave VARCHAR(100) NOT NULL,
+    valor_respuesta TEXT NOT NULL,
+    fecha_respuesta TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (estudiante_id) REFERENCES estudiante(estudiante_id) ON DELETE CASCADE,
+    UNIQUE KEY unique_student_question (estudiante_id, pregunta_clave),
+    INDEX idx_estudiante_id (estudiante_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================
 -- TABLA: AUDITORÍA
 -- =====================================================
 CREATE TABLE IF NOT EXISTS auditoria (

@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import estudiantes, materias, calificaciones, carreras, recomendaciones
+from routers import estudiantes, materias, calificaciones, carreras, recomendaciones, recomendaciones_automaticas
 
-app = FastAPI(title="SIRA API", version="1.0.0")
+app = FastAPI(title="SIRA API", version="1.0.0", redirect_slashes=False)
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,6 +17,7 @@ app.include_router(materias.router, prefix="/api/materias", tags=["Materias"])
 app.include_router(calificaciones.router, prefix="/api/calificaciones", tags=["Calificaciones"])
 app.include_router(carreras.router, prefix="/api/carreras", tags=["Carreras"])
 app.include_router(recomendaciones.router, prefix="/api/recomendaciones", tags=["Recomendaciones"])
+app.include_router(recomendaciones_automaticas.router, prefix="/api/recomendaciones-automaticas", tags=["Recomendaciones Automáticas"])
 
 @app.get("/")
 def root():

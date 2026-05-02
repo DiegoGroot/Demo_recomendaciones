@@ -20,7 +20,7 @@ def calcular_promedio(p1, p2, p3):
     vals = [v for v in [p1, p2, p3] if v is not None]
     return round(sum(vals) / len(vals), 2) if vals else 0
 
-@router.get("/")
+@router.get("")
 def listar_calificaciones(db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
     try:
@@ -54,7 +54,7 @@ def calificaciones_por_estudiante(estudiante_id: int, db=Depends(get_db)):
         cursor.close()
         raise HTTPException(status_code=500, detail=f"Error al listar calificaciones: {str(e)}")
 
-@router.post("/", status_code=201)
+@router.post("", status_code=201)
 def crear_calificacion(data: CalificacionCreate, db=Depends(get_db)):
     promedio = calcular_promedio(data.parcial1, data.parcial2, data.parcial3)
     cursor = db.cursor(dictionary=True)

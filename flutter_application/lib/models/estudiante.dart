@@ -6,6 +6,9 @@ class Estudiante {
   final int? carreraId;
   final String? carrera;
   final double? promedioGeneral;
+  final String? rol;
+  final int? edad;
+  final String? fechaNacimiento;
 
   Estudiante({
     this.estudianteId,
@@ -15,6 +18,9 @@ class Estudiante {
     this.carreraId,
     this.carrera,
     this.promedioGeneral,
+    this.rol,
+    this.edad,
+    this.fechaNacimiento,
   });
 
   factory Estudiante.fromJson(Map<String, dynamic> json) {
@@ -26,6 +32,9 @@ class Estudiante {
       carreraId: json['carrera_id'] as int?,
       carrera: json['carrera'] as String?,
       promedioGeneral: (json['promedio_general'] as num?)?.toDouble(),
+      rol: json['rol'] as String?,
+      edad: json['edad'] as int?,
+      fechaNacimiento: json['fecha_nacimiento'] as String?,
     );
   }
 
@@ -33,8 +42,11 @@ class Estudiante {
     return {
       'nombre': nombre,
       'correo': correo,
-      'contrasena': contrasena,
-      'carrera_id': carreraId,
+      if (contrasena != null) 'contrasena': contrasena,
+      if (carreraId != null) 'carrera_id': carreraId,
+      if (rol != null) 'rol': rol,
+      if (edad != null) 'edad': edad,
+      if (fechaNacimiento != null) 'fecha_nacimiento': fechaNacimiento,
     };
   }
 }

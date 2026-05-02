@@ -1,6 +1,27 @@
 version: '3.8'
 
 services:
+  backend:
+    build: .
+    container_name: sira_backend
+    environment:
+      DB_HOST: mysql
+      DB_USER: sira_user
+      DB_PASSWORD: sira_pass123
+      DB_NAME: sira
+      DB_PORT: 3306
+    ports:
+      - "8000:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - sira_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      timeout: 10s
+      retries: 5
+
   mysql:
     image: mysql:8.0
     container_name: sira_mysql
