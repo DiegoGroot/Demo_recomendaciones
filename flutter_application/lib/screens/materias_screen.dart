@@ -12,9 +12,27 @@ class MateriasScreen extends StatefulWidget {
 class _MateriasScreenState extends State<MateriasScreen> {
   late Future<List<Materia>> _futureMaterias;
   final List<Map<String, dynamic>> _mockMaterias = [
-    {'id': 1, 'nombre': 'Programación I', 'codigo': 'PROG101', 'creditos': 3, 'carrera_id': 1},
-    {'id': 2, 'nombre': 'Cálculo', 'codigo': 'CALC101', 'creditos': 4, 'carrera_id': 1},
-    {'id': 3, 'nombre': 'Administración', 'codigo': 'ADM101', 'creditos': 3, 'carrera_id': 2},
+    {
+      'id': 1,
+      'nombre': 'Programación I',
+      'codigo': 'PROG101',
+      'creditos': 3,
+      'carrera_id': 1,
+    },
+    {
+      'id': 2,
+      'nombre': 'Cálculo',
+      'codigo': 'CALC101',
+      'creditos': 4,
+      'carrera_id': 1,
+    },
+    {
+      'id': 3,
+      'nombre': 'Administración',
+      'codigo': 'ADM101',
+      'creditos': 3,
+      'carrera_id': 2,
+    },
   ];
 
   @override
@@ -29,21 +47,24 @@ class _MateriasScreenState extends State<MateriasScreen> {
     } catch (e) {
       // En desarrollo, retornamos datos mock
       return _mockMaterias
-          .map((m) => Materia(
-                materiaId: m['id'] as int?,
-                nombre: m['nombre'] as String,
-                codigo: m['codigo'] as String,
-                carreraId: m['carrera_id'] as int,
-                creditos: m['creditos'] as int,
-              ))
+          .map(
+            (m) => Materia(
+              materiaId: m['id'] as int?,
+              nombre: m['nombre'] as String,
+              codigo: m['codigo'] as String,
+              carreraId: m['carrera_id'] as int,
+              creditos: m['creditos'] as int,
+            ),
+          )
           .toList();
     }
   }
 
   void _showMateriaForm([Materia? materia]) {
     final nombreController = TextEditingController(text: materia?.nombre ?? '');
-    final creditosController =
-        TextEditingController(text: materia?.creditos.toString() ?? '');
+    final creditosController = TextEditingController(
+      text: materia?.creditos.toString() ?? '',
+    );
     int carreraId = materia?.carreraId ?? 1;
 
     showModalBottomSheet(
@@ -65,10 +86,9 @@ class _MateriasScreenState extends State<MateriasScreen> {
             children: [
               Text(
                 materia == null ? 'Nueva Materia' : 'Editar Materia',
-                style: Theme.of(context)
-                    .textTheme
-                    .headlineSmall
-                    ?.copyWith(fontWeight: FontWeight.bold),
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 24),
               TextField(
@@ -138,7 +158,9 @@ class _MateriasScreenState extends State<MateriasScreen> {
                             creditosController.text.isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text('Por favor completa todos los campos'),
+                              content: Text(
+                                'Por favor completa todos los campos',
+                              ),
                               backgroundColor: Colors.red,
                             ),
                           );
@@ -147,9 +169,11 @@ class _MateriasScreenState extends State<MateriasScreen> {
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text(materia == null
-                                ? 'Materia creada exitosamente'
-                                : 'Materia actualizada exitosamente'),
+                            content: Text(
+                              materia == null
+                                  ? 'Materia creada exitosamente'
+                                  : 'Materia actualizada exitosamente',
+                            ),
                             backgroundColor: Colors.green,
                           ),
                         );
@@ -184,7 +208,7 @@ class _MateriasScreenState extends State<MateriasScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Materias'),
+        title: const Text('📚 Mis Materias'),
         elevation: 0,
         backgroundColor: Colors.blue.shade700,
         foregroundColor: Colors.white,
@@ -193,8 +217,18 @@ class _MateriasScreenState extends State<MateriasScreen> {
         future: _futureMaterias,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(),
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Cargando tus materias...',
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                ],
+              ),
             );
           }
 
@@ -203,20 +237,31 @@ class _MateriasScreenState extends State<MateriasScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.error_outline, size: 64, color: Colors.red.shade400),
+                  Icon(
+                    Icons.error_outline,
+                    size: 64,
+                    color: Colors.red.shade400,
+                  ),
                   const SizedBox(height: 16),
                   Text(
-                    'Error al cargar materias',
+                    'Oops, hubo un problema',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'No pudimos cargar las materias. Intenta de nuevo.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    textAlign: TextAlign.center,
+                  ),
                   const SizedBox(height: 24),
-                  ElevatedButton(
+                  ElevatedButton.icon(
                     onPressed: () {
                       setState(() {
                         _futureMaterias = _getMaterias();
                       });
                     },
-                    child: const Text('Reintentar'),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Reintentar'),
                   ),
                 ],
               ),
@@ -230,16 +275,24 @@ class _MateriasScreenState extends State<MateriasScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.book, size: 64, color: Colors.grey.shade400),
+                  Icon(Icons.book, size: 64, color: Colors.grey.shade300),
                   const SizedBox(height: 16),
                   Text(
-                    'No hay materias registradas',
+                    'Sin materias registradas',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Crea tu primera materia para comenzar',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
                   const SizedBox(height: 24),
-                  ElevatedButton(
+                  ElevatedButton.icon(
                     onPressed: () => _showMateriaForm(),
-                    child: const Text('Agregar Materia'),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Crear Materia'),
                   ),
                 ],
               ),
@@ -251,92 +304,149 @@ class _MateriasScreenState extends State<MateriasScreen> {
             itemCount: materias.length,
             itemBuilder: (context, index) {
               final materia = materias[index];
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: ListTile(
-                  leading: Container(
-                    width: 50,
-                    height: 50,
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Card(
+                  elevation: 3,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.amber.shade400,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(16),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Colors.blue.shade50,
+                          Colors.blue.shade100.withValues(alpha: 0.5),
+                        ],
+                      ),
                     ),
-                    child: Center(
-                      child: Text(
-                        '${materia.creditos}',
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.all(16),
+                      leading: Container(
+                        width: 60,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade700,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.blue.shade700.withValues(alpha: 0.3),
+                              blurRadius: 8,
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                '${materia.creditos}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 20,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              Text(
+                                'créditos',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.white.withValues(alpha: 0.8),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      title: Text(
+                        materia.nombre,
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          color: Colors.white,
+                          fontSize: 16,
                         ),
                       ),
-                    ),
-                  ),
-                  title: Text(
-                    materia.nombre,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: const Text('Créditos del curso'),
-                  trailing: PopupMenuButton(
-                    itemBuilder: (context) => [
-                      PopupMenuItem(
-                        child: const Row(
-                          children: [
-                            Icon(Icons.edit, size: 20),
-                            SizedBox(width: 8),
-                            Text('Editar'),
-                          ],
+                      subtitle: Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          'Código: ${materia.codigo}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade600,
+                          ),
                         ),
-                        onTap: () => _showMateriaForm(materia),
                       ),
-                      PopupMenuItem(
-                        child: const Row(
-                          children: [
-                            Icon(Icons.delete, size: 20, color: Colors.red),
-                            SizedBox(width: 8),
-                            Text('Eliminar', style: TextStyle(color: Colors.red)),
-                          ],
-                        ),
-                        onTap: () {
-                          showDialog(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Eliminar Materia'),
-                              content: Text(
-                                  '¿Estás seguro de que deseas eliminar ${materia.nombre}?'),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: const Text('Cancelar'),
-                                ),
-                                TextButton(
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Materia eliminada'),
-                                        backgroundColor: Colors.green,
-                                      ),
-                                    );
-                                    setState(() {
-                                      _futureMaterias = _getMaterias();
-                                    });
-                                  },
-                                  child: const Text(
-                                    'Eliminar',
-                                    style: TextStyle(color: Colors.red),
-                                  ),
+                      trailing: PopupMenuButton(
+                        itemBuilder: (context) => [
+                          PopupMenuItem(
+                            child: const Row(
+                              children: [
+                                Icon(Icons.edit, size: 20, color: Colors.blue),
+                                SizedBox(width: 8),
+                                Text('Editar'),
+                              ],
+                            ),
+                            onTap: () => _showMateriaForm(materia),
+                          ),
+                          PopupMenuItem(
+                            child: const Row(
+                              children: [
+                                Icon(Icons.delete, size: 20, color: Colors.red),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Eliminar',
+                                  style: TextStyle(color: Colors.red),
                                 ),
                               ],
                             ),
-                          );
-                        },
+                            onTap: () {
+                              showDialog(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: const Text('¿Eliminar materia?'),
+                                  content: Text(
+                                    '¿Estás seguro de que deseas eliminar "${materia.nombre}"? Esta acción no se puede deshacer.',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context),
+                                      child: const Text('Cancelar'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () {
+                                        Navigator.pop(context);
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              '✓ "${materia.nombre}" eliminada',
+                                            ),
+                                            backgroundColor: Colors.green,
+                                            duration: const Duration(
+                                              seconds: 2,
+                                            ),
+                                          ),
+                                        );
+                                        setState(() {
+                                          _futureMaterias = _getMaterias();
+                                        });
+                                      },
+                                      child: const Text(
+                                        'Eliminar',
+                                        style: TextStyle(color: Colors.red),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
               );
@@ -348,7 +458,7 @@ class _MateriasScreenState extends State<MateriasScreen> {
         onPressed: () => _showMateriaForm(),
         backgroundColor: Colors.blue.shade700,
         icon: const Icon(Icons.add),
-        label: const Text('Nueva'),
+        label: const Text('Nueva Materia'),
       ),
     );
   }

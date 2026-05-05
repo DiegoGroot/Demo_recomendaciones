@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from database import get_db
 from mysql.connector import errors as mysql_errors
+from utils import generar_recomendaciones_por_calificacion
 
 router = APIRouter()
 
@@ -250,3 +251,91 @@ def eliminar_recomendacion(recomendacion_id: int, db=Depends(get_db)):
         db.rollback()
         cursor.close()
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# POST auto-generar recomendación por calificación
+@router.post("/generar/por-calificacion/{calificacion_id}")
+def generar_recomendacion_por_calificacion(calificacion_id: int, db=Depends(get_db)):
+    """
+    Auto-genera una recomendación basada en la calificación del estudiante.
+    Si ya existe una recomendación para esa materia, la actualiza.
+    """
+    cursor = db.cursor(dictionary=True)
+    try:
+        # Obtener la calificación
+        cursor.execute("""
+            SELECT c.calificacion_id, c.estudiante_id, c.materia_id, c.nota_final, c.estado
+            FROM sira.calificacion c
+            WHERE c.calificacion_id = %s
+        """, (calificacion_id,))
+        cal = cursor.fetchone()
+        
+        if not cal:
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Calificación no encontrada")
+        
+        # No generar si el estado no es aprobado o reprobado
+        if cal['estado'] == 'en_curso':
+            cursor.close()
+            raise HTTPException(status_code=400, detail="La calificación debe estar finalizada")
+        
+        # Generar recomendación con la utilidad
+        rec_data = generar_recomendaciones_por_calificacion(
+            cal['nota_final'],
+            cal['estudiante_id'],
+            cal['materia_id']
+        )
+        
+        # Verificar si ya existe una recomendación para esta materia y estudiante
+        cursor.execute("""
+            SELECT recomendacion_id FROM sira.recomendacion
+            WHERE estudiante_id = %s AND materia_id = %s AND estado = 'activa'
+        """, (cal['estudiante_id'], cal['materia_id']))
+        
+        existing = cursor.fetchone()
+        
+        if existing:
+            # Actualizar la existente
+            cursor.execute("""
+                UPDATE sira.recomendacion
+                SET tipo_recomendacion = %s,
+                    descripcion = %s,
+                    prioridad = %s
+                WHERE recomendacion_id = %s
+            """, (rec_data['tipo_recomendacion'], rec_data['descripcion'],
+                  rec_data['prioridad'], existing['recomendacion_id']))
+            db.commit()
+            rec_id = existing['recomendacion_id']
+        else:
+            # Crear nueva
+            cursor.execute("""
+                INSERT INTO sira.recomendacion
+                (estudiante_id, materia_id, tipo_recomendacion, descripcion, prioridad, estado, fuente)
+                VALUES (%s, %s, %s, %s, %s, 'activa', 'automatica')
+            """, (rec_data['estudiante_id'], rec_data['materia_id'],
+                  rec_data['tipo_recomendacion'], rec_data['descripcion'],
+                  rec_data['prioridad']))
+            db.commit()
+            rec_id = cursor.lastrowid
+        
+        # Obtener la recomendación creada/actualizada
+        cursor.execute("""
+            SELECT r.recomendacion_id, r.estudiante_id, e.nombre as estudiante_nombre,
+                   r.materia_id, m.nombre as materia_nombre, r.tipo_recomendacion, r.descripcion,
+                   r.prioridad, r.estado, r.fecha_creacion, r.fecha_actualizacion, r.fuente
+            FROM sira.recomendacion r
+            JOIN sira.estudiante e ON r.estudiante_id = e.estudiante_id
+            LEFT JOIN sira.materia m ON r.materia_id = m.materia_id
+            WHERE r.recomendacion_id = %s
+        """, (rec_id,))
+        resultado = cursor.fetchone()
+        cursor.close()
+        return resultado
+        
+    except HTTPException:
+        cursor.close()
+        raise
+    except Exception as e:
+        db.rollback()
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")

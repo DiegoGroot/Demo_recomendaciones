@@ -5,588 +5,339 @@ import '../models/materia.dart';
 import '../models/estudiante.dart';
 import '../models/calificacion.dart';
 import '../models/recomendacion.dart';
+import '../models/maestro.dart';
+import '../config/app_config.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://localhost:8000/api';
-  static const int timeoutSeconds = 10;
+ static String get baseUrl => AppConfig.baseUrl;
+  static Duration get _timeout => Duration(seconds: AppConfig.timeoutSeconds);
+
+  static Map<String, String> get _json => {'Content-Type': 'application/json'};
+
+  // ── HELPERS ────────────────────────────────────────────────────────────────
+  static Future<dynamic> _get(String path) async {
+    final r = await http.get(Uri.parse('$baseUrl$path')).timeout(_timeout);
+    if (r.statusCode == 200) return jsonDecode(r.body);
+    throw Exception('GET $path → ${r.statusCode}: ${r.body}');
+  }
+
+  static Future<dynamic> _post(String path, Map<String, dynamic> body) async {
+    final r = await http
+        .post(Uri.parse('$baseUrl$path'), headers: _json, body: jsonEncode(body))
+        .timeout(_timeout);
+    if (r.statusCode == 200 || r.statusCode == 201) return jsonDecode(r.body);
+    throw Exception('POST $path → ${r.statusCode}: ${r.body}');
+  }
+
+  static Future<dynamic> _put(String path, Map<String, dynamic> body) async {
+    final r = await http
+        .put(Uri.parse('$baseUrl$path'), headers: _json, body: jsonEncode(body))
+        .timeout(_timeout);
+    if (r.statusCode == 200) return jsonDecode(r.body);
+    throw Exception('PUT $path → ${r.statusCode}: ${r.body}');
+  }
+
+  static Future<void> _delete(String path) async {
+    final r = await http.delete(Uri.parse('$baseUrl$path')).timeout(_timeout);
+    if (r.statusCode != 200 && r.statusCode != 204) {
+      throw Exception('DELETE $path → ${r.statusCode}: ${r.body}');
+    }
+  }
+
+  // ==================== AUTHENTICATION ====================
+  // Se unificaron las rutas bajo el prefijo /auth según las pruebas de backend[cite: 1]
+
+  static Future<Map<String, dynamic>> loginEstudiante(
+      String correo, String contrasena) async {
+    return await _post('/auth/estudiantes/login', 
+        {'correo': correo.trim(), 'contrasena': contrasena.trim()}) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> loginMaestro(
+      String correo, String contrasena) async {
+    return await _post('/auth/maestros/login', 
+        {'correo': correo.trim(), 'contrasena': contrasena.trim()}) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> loginTutor(
+      String correo, String contrasena) async {
+    return await _post('/auth/tutores/login', 
+        {'correo': correo.trim(), 'contrasena': contrasena.trim()}) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> loginAdmin(
+      String correo, String contrasena) async {
+    return await _post('/auth/admin/login', 
+        {'correo': correo.trim(), 'contrasena': contrasena.trim()}) as Map<String, dynamic>;
+  }
 
   // ==================== CARRERAS ====================
   static Future<List<Carrera>> getCarreras() async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/carreras'))
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
-        return data
-            .map((c) => Carrera.fromJson(c as Map<String, dynamic>))
-            .toList();
-      }
-      throw Exception('Error al cargar carreras: ${response.statusCode}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+    final data = await _get('/carreras') as List<dynamic>;
+    return data.map((c) => Carrera.fromJson(c as Map<String, dynamic>)).toList();
   }
 
-  static Future<Carrera> createCarrera(Carrera carrera) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/carreras'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(carrera.toJson()),
-          )
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        return Carrera.fromJson(
-            jsonDecode(response.body) as Map<String, dynamic>);
-      }
-      throw Exception('Error al crear carrera: ${response.statusCode}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+  static Future<Carrera> createCarrera(Carrera c) async {
+    final data = await _post('/carreras', c.toJson()) as Map<String, dynamic>;
+    return Carrera.fromJson(data);
   }
 
-  static Future<void> updateCarrera(int id, Carrera carrera) async {
-    try {
-      final response = await http
-          .put(
-            Uri.parse('$baseUrl/carreras/$id'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(carrera.toJson()),
-          )
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode != 200) {
-        throw Exception('Error al actualizar carrera: ${response.statusCode}');
-      }
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
-  }
+  static Future<void> updateCarrera(int id, Carrera c) async =>
+      await _put('/carreras/$id', c.toJson());
 
-  static Future<void> deleteCarrera(int id) async {
-    try {
-      final response = await http
-          .delete(Uri.parse('$baseUrl/carreras/$id'))
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode != 200) {
-        throw Exception('Error al eliminar carrera: ${response.statusCode}');
-      }
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
-  }
+  static Future<void> deleteCarrera(int id) async =>
+      await _delete('/carreras/$id');
 
   // ==================== MATERIAS ====================
   static Future<List<Materia>> getMaterias() async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/materias'))
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
-        return data
-            .map((m) => Materia.fromJson(m as Map<String, dynamic>))
-            .toList();
-      }
-      throw Exception('Error al cargar materias: ${response.statusCode}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+    final data = await _get('/materias') as List<dynamic>;
+    return data.map((m) => Materia.fromJson(m as Map<String, dynamic>)).toList();
   }
 
   static Future<List<Materia>> getMateriasByCarrera(int carreraId) async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/materias?carrera_id=$carreraId'))
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
-        return data
-            .map((m) => Materia.fromJson(m as Map<String, dynamic>))
-            .toList();
-      }
-      throw Exception('Error al cargar materias: ${response.statusCode}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+    final data = await _get('/materias?carrera_id=$carreraId') as List<dynamic>;
+    return data.map((m) => Materia.fromJson(m as Map<String, dynamic>)).toList();
   }
 
-  static Future<Materia> createMateria(Materia materia) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/materias'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(materia.toJson()),
-          )
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        return Materia.fromJson(
-            jsonDecode(response.body) as Map<String, dynamic>);
-      }
-      throw Exception('Error al crear materia: ${response.statusCode}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+  static Future<Materia> createMateria(Materia m) async {
+    final data = await _post('/materias', m.toJson()) as Map<String, dynamic>;
+    return Materia.fromJson(data);
   }
 
-  static Future<void> updateMateria(int id, Materia materia) async {
-    try {
-      final response = await http
-          .put(
-            Uri.parse('$baseUrl/materias/$id'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(materia.toJson()),
-          )
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode != 200) {
-        throw Exception('Error al actualizar materia: ${response.statusCode}');
-      }
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
-  }
+  static Future<void> updateMateria(int id, Materia m) async =>
+      await _put('/materias/$id', m.toJson());
 
-  static Future<void> deleteMateria(int id) async {
-    try {
-      final response = await http
-          .delete(Uri.parse('$baseUrl/materias/$id'))
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode != 200) {
-        throw Exception('Error al eliminar materia: ${response.statusCode}');
-      }
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
-  }
+  static Future<void> deleteMateria(int id) async =>
+      await _delete('/materias/$id');
 
   // ==================== ESTUDIANTES ====================
-  static Future<Map<String, dynamic>> login(
-      String correo, String contrasena) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/estudiantes/login'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'correo': correo, 'contrasena': contrasena}),
-          )
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return data;
-      }
-      throw Exception('Error al iniciar sesión: ${response.statusCode}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
-  }
-
   static Future<List<Estudiante>> getEstudiantes() async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/estudiantes'))
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
-        return data
-            .map((e) => Estudiante.fromJson(e as Map<String, dynamic>))
-            .toList();
-      }
-      throw Exception('Error al cargar estudiantes: ${response.statusCode}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+    final data = await _get('/estudiantes') as List<dynamic>;
+    return data.map((e) => Estudiante.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   static Future<Estudiante> getEstudianteById(int id) async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/estudiantes/$id'))
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 200) {
-        return Estudiante.fromJson(
-            jsonDecode(response.body) as Map<String, dynamic>);
-      }
-      throw Exception('Estudiante no encontrado: ${response.statusCode}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+    final data = await _get('/estudiantes/$id') as Map<String, dynamic>;
+    return Estudiante.fromJson(data);
   }
 
-  static Future<Estudiante> createEstudiante(Estudiante estudiante) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/estudiantes'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(estudiante.toJson()),
-          )
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        return Estudiante.fromJson(
-            jsonDecode(response.body) as Map<String, dynamic>);
-      }
-      throw Exception('Error al crear estudiante: ${response.statusCode}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+  static Future<Estudiante> createEstudiante(Estudiante e) async {
+    final data = await _post('/estudiantes', e.toJson()) as Map<String, dynamic>;
+    return Estudiante.fromJson(data);
   }
 
-  static Future<void> updateEstudiante(int id, Estudiante estudiante) async {
-    try {
-      final response = await http
-          .put(
-            Uri.parse('$baseUrl/estudiantes/$id'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(estudiante.toJson()),
-          )
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode != 200) {
-        throw Exception(
-            'Error al actualizar estudiante: ${response.statusCode}');
-      }
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+  static Future<void> updateEstudiante(int id, Estudiante e) async =>
+      await _put('/estudiantes/$id', e.toJson());
+
+  static Future<void> deleteEstudiante(int id) async =>
+      await _delete('/estudiantes/$id');
+
+  // ==================== MAESTROS ====================
+  static Future<List<Maestro>> getMaestros() async {
+    final data = await _get('/maestros') as List<dynamic>;
+    return data.map((m) => Maestro.fromJson(m as Map<String, dynamic>)).toList();
   }
 
-  static Future<void> deleteEstudiante(int id) async {
-    try {
-      final response = await http
-          .delete(Uri.parse('$baseUrl/estudiantes/$id'))
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode != 200) {
-        throw Exception('Error al eliminar estudiante: ${response.statusCode}');
-      }
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+  static Future<Maestro> createMaestro(Maestro m) async {
+    final data = await _post('/maestros', m.toJson()) as Map<String, dynamic>;
+    return Maestro.fromJson(data);
   }
+
+  static Future<void> updateMaestro(int id, Maestro m) async =>
+      await _put('/maestros/$id', m.toJson());
+
+  static Future<void> deleteMaestro(int id) async =>
+      await _delete('/maestros/$id');
+
+  static Future<List<Materia>> getMateriasDelMaestro(int maestroId) async {
+    final data = await _get('/maestros/$maestroId/materias') as List<dynamic>;
+    return data.map((m) => Materia.fromJson(m as Map<String, dynamic>)).toList();
+  }
+
+  static Future<List<Map<String, dynamic>>> getEstudiantesDeMateriaMaestro(
+      int maestroId, int materiaId) async {
+    final data = await _get(
+        '/maestros/$maestroId/materias/$materiaId/estudiantes') as List<dynamic>;
+    return data.cast<Map<String, dynamic>>();
+  }
+
+  static Future<void> asignarMateriaMaestro(
+          int maestroId, int materiaId) async =>
+      await _post('/maestros/$maestroId/materias/$materiaId', {});
+
+  static Future<void> quitarMateriaMaestro(
+          int maestroId, int materiaId) async =>
+      await _delete('/maestros/$maestroId/materias/$materiaId');
 
   // ==================== CALIFICACIONES ====================
-  static Future<List<Calificacion>> getCalificaciones() async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/calificaciones'))
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
-        return data
-            .map((c) => Calificacion.fromJson(c as Map<String, dynamic>))
-            .toList();
-      }
-      throw Exception('Error al cargar calificaciones: ${response.statusCode}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+  static Future<List<Calificacion>> getCalificaciones(
+      {int? estudianteId, int? materiaId}) async {
+    String path = '/calificaciones';
+    final params = <String>[];
+    if (estudianteId != null) params.add('estudiante_id=$estudianteId');
+    if (materiaId != null) params.add('materia_id=$materiaId');
+    if (params.isNotEmpty) path += '?${params.join('&')}';
+    final data = await _get(path) as List<dynamic>;
+    return data
+        .map((c) => Calificacion.fromJson(c as Map<String, dynamic>))
+        .toList();
   }
 
   static Future<List<Calificacion>> getCalificacionesByEstudiante(
       int estudianteId) async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/calificaciones?estudiante_id=$estudianteId'))
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
-        return data
-            .map((c) => Calificacion.fromJson(c as Map<String, dynamic>))
-            .toList();
-      }
-      throw Exception('Error al cargar calificaciones: ${response.statusCode}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+    final data =
+        await _get('/calificaciones/estudiante/$estudianteId') as List<dynamic>;
+    return data
+        .map((c) => Calificacion.fromJson(c as Map<String, dynamic>))
+        .toList();
   }
 
-  static Future<Calificacion> createCalificacion(
-      Calificacion calificacion) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/calificaciones'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(calificacion.toJson()),
-          )
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        return Calificacion.fromJson(
-            jsonDecode(response.body) as Map<String, dynamic>);
-      }
-      throw Exception('Error al crear calificación: ${response.statusCode}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+  static Future<Calificacion> createCalificacion(Calificacion c) async {
+    final body = {
+      'estudiante_id': c.estudianteId,
+      'materia_id': c.materiaId,
+      if (c.notaParcial1 != null) 'parcial1': c.notaParcial1,
+      if (c.notaParcial2 != null) 'parcial2': c.notaParcial2,
+      if (c.notaFinal != null) 'nota_final': c.notaFinal,
+      'estado': c.estado,
+      'semestre': c.semestre ?? 1,
+    };
+    final data = await _post('/calificaciones', body) as Map<String, dynamic>;
+    return Calificacion.fromJson(data);
   }
 
-  static Future<void> updateCalificacion(
-      int id, Calificacion calificacion) async {
-    try {
-      final response = await http
-          .put(
-            Uri.parse('$baseUrl/calificaciones/$id'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(calificacion.toJson()),
-          )
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode != 200) {
-        throw Exception(
-            'Error al actualizar calificación: ${response.statusCode}');
-      }
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+  static Future<void> updateCalificacion(int id, Calificacion c) async {
+    final body = <String, dynamic>{
+      if (c.notaParcial1 != null) 'parcial1': c.notaParcial1,
+      if (c.notaParcial2 != null) 'parcial2': c.notaParcial2,
+      if (c.notaFinal != null) 'nota_final': c.notaFinal,
+      'estado': c.estado,
+      if (c.semestre != null) 'semestre': c.semestre,
+    };
+    await _put('/calificaciones/$id', body);
   }
 
-  static Future<void> deleteCalificacion(int id) async {
-    try {
-      final response = await http
-          .delete(Uri.parse('$baseUrl/calificaciones/$id'))
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode != 200) {
-        throw Exception(
-            'Error al eliminar calificación: ${response.statusCode}');
-      }
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
-  }
+  static Future<void> deleteCalificacion(int id) async =>
+      await _delete('/calificaciones/$id');
 
   // ==================== RECOMENDACIONES ====================
-  static Future<List<Recomendacion>> getRecomendaciones() async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/recomendaciones'))
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
-        return data
-            .map((r) => Recomendacion.fromJson(r as Map<String, dynamic>))
-            .toList();
-      }
-      throw Exception(
-          'Error al cargar recomendaciones: ${response.statusCode}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+  static Future<List<Recomendacion>> getRecomendaciones(
+      {int? estudianteId, String? prioridad, String? estado}) async {
+    String path = '/recomendaciones';
+    final params = <String>[];
+    if (estudianteId != null) params.add('estudiante_id=$estudianteId');
+    if (prioridad != null) params.add('prioridad=$prioridad');
+    if (estado != null) params.add('estado=$estado');
+    if (params.isNotEmpty) path += '?${params.join('&')}';
+    final data = await _get(path) as List<dynamic>;
+    return data
+        .map((r) => Recomendacion.fromJson(r as Map<String, dynamic>))
+        .toList();
   }
 
   static Future<List<Recomendacion>> getRecomendacionesByEstudiante(
-      int estudianteId) async {
-    try {
-      final response = await http
-          .get(
-              Uri.parse('$baseUrl/recomendaciones?estudiante_id=$estudianteId'))
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
-        return data
-            .map((r) => Recomendacion.fromJson(r as Map<String, dynamic>))
-            .toList();
-      }
-      throw Exception(
-          'Error al cargar recomendaciones: ${response.statusCode}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+      int estudianteId) async =>
+      getRecomendaciones(estudianteId: estudianteId);
+
+  static Future<Recomendacion> createRecomendacion(Recomendacion r) async {
+    final data =
+        await _post('/recomendaciones', r.toJson()) as Map<String, dynamic>;
+    return Recomendacion.fromJson(data);
   }
 
-  static Future<List<Recomendacion>> getRecomendacionesByPrioridad(
-      String prioridad) async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/recomendaciones?prioridad=$prioridad'))
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
-        return data
-            .map((r) => Recomendacion.fromJson(r as Map<String, dynamic>))
-            .toList();
-      }
-      throw Exception(
-          'Error al cargar recomendaciones: ${response.statusCode}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+  static Future<void> updateRecomendacion(int id, Recomendacion r) async =>
+      await _put('/recomendaciones/$id', r.toJson());
+
+  static Future<void> deleteRecomendacion(int id) async =>
+      await _delete('/recomendaciones/$id');
+
+  static Future<Map<String, dynamic>> generarRecomendacionPorCalificacion(int calificacionId) async =>
+      await _post('/recomendaciones/generar/por-calificacion/$calificacionId', {}) as Map<String, dynamic>;
+
+  // ==================== INSCRIPCIONES ====================
+  static Future<List<Map<String, dynamic>>> getInscripciones() async {
+    final data = await _get('/inscripciones') as List<dynamic>;
+    return data.cast<Map<String, dynamic>>();
   }
 
-  static Future<Recomendacion> createRecomendacion(
-      Recomendacion recomendacion) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/recomendaciones'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(recomendacion.toJson()),
-          )
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        return Recomendacion.fromJson(
-            jsonDecode(response.body) as Map<String, dynamic>);
-      }
-      throw Exception('Error al crear recomendación: ${response.statusCode}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+  static Future<List<Map<String, dynamic>>> getInscripcionesByEstudiante(int estudianteId) async {
+    final data = await _get('/inscripciones/estudiante/$estudianteId') as List<dynamic>;
+    return data.cast<Map<String, dynamic>>();
   }
 
-  static Future<void> updateRecomendacion(
-      int id, Recomendacion recomendacion) async {
-    try {
-      final response = await http
-          .put(
-            Uri.parse('$baseUrl/recomendaciones/$id'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(recomendacion.toJson()),
-          )
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode != 200) {
-        throw Exception(
-            'Error al actualizar recomendación: ${response.statusCode}');
-      }
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+  static Future<List<Map<String, dynamic>>> getInscripcionesByMateria(int materiaId) async {
+    final data = await _get('/inscripciones/materia/$materiaId') as List<dynamic>;
+    return data.cast<Map<String, dynamic>>();
   }
 
-  static Future<void> deleteRecomendacion(int id) async {
-    try {
-      final response = await http
-          .delete(Uri.parse('$baseUrl/recomendaciones/$id'))
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode != 200) {
-        throw Exception(
-            'Error al eliminar recomendación: ${response.statusCode}');
-      }
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+  static Future<Map<String, dynamic>> createInscripcion(Map<String, dynamic> data) async =>
+      await _post('/inscripciones', data) as Map<String, dynamic>;
+
+  static Future<void> updateInscripcion(int id, Map<String, dynamic> data) async =>
+      await _put('/inscripciones/$id', data);
+
+  static Future<void> deleteInscripcion(int id) async =>
+      await _delete('/inscripciones/$id');
+
+  // ==================== EVALUACIONES ====================
+  static Future<List<Map<String, dynamic>>> getEvaluaciones({
+    int? recomendacionId,
+    String? estado,
+  }) async {
+    String path = '/evaluaciones';
+    final params = <String>[];
+    if (recomendacionId != null) params.add('recomendacion_id=$recomendacionId');
+    if (estado != null) params.add('estado=$estado');
+    if (params.isNotEmpty) path += '?${params.join('&')}';
+    final data = await _get(path) as List<dynamic>;
+    return data.cast<Map<String, dynamic>>();
   }
 
-  // ==================== RECOMENDACIONES AUTOMÁTICAS ====================
-  static Future<Map<String, dynamic>> generarRecomendacionesAutomaticas(
-      int estudianteId) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/recomendaciones-automaticas/generar/$estudianteId'),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      }
-      throw Exception(
-          'Error al generar recomendaciones: ${response.statusCode}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+  static Future<Map<String, dynamic>> createEvaluacion(Map<String, dynamic> data) async =>
+      await _post('/evaluaciones', data) as Map<String, dynamic>;
+
+  static Future<void> updateEvaluacion(int id, Map<String, dynamic> data) async =>
+      await _put('/evaluaciones/$id', data);
+
+  static Future<void> deleteEvaluacion(int id) async =>
+      await _delete('/evaluaciones/$id');
+
+  static Future<List<Map<String, dynamic>>> getPreguntasByEvaluacion(int evaluacionId) async {
+    final data = await _get('/evaluaciones/preguntas/evaluacion/$evaluacionId') as List<dynamic>;
+    return data.cast<Map<String, dynamic>>();
   }
 
-  static Future<List<Recomendacion>> getRecomendacionesSugeridas(
-      int estudianteId) async {
-    try {
-      final response = await http
-          .get(Uri.parse(
-              '$baseUrl/recomendaciones-automaticas/sugerencias/$estudianteId'))
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
-        return data
-            .map((r) => Recomendacion.fromJson(r as Map<String, dynamic>))
-            .toList();
-      }
-      throw Exception(
-          'Error al cargar recomendaciones sugeridas: ${response.statusCode}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+  static Future<Map<String, dynamic>> createPregunta(Map<String, dynamic> data) async =>
+      await _post('/evaluaciones/preguntas', data) as Map<String, dynamic>;
+
+  static Future<void> updatePregunta(int id, Map<String, dynamic> data) async =>
+      await _put('/evaluaciones/preguntas/$id', data);
+
+  static Future<void> deletePregunta(int id) async =>
+      await _delete('/evaluaciones/preguntas/$id');
+
+  static Future<List<Map<String, dynamic>>> getOpcionesByPregunta(int preguntaId) async {
+    final data = await _get('/evaluaciones/opciones/pregunta/$preguntaId') as List<dynamic>;
+    return data.cast<Map<String, dynamic>>();
   }
 
-  static Future<Map<String, dynamic>> guardarRespuestasPersonales(
-      int estudianteId, List<Map<String, String>> respuestas) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse(
-                '$baseUrl/recomendaciones-automaticas/preguntas-personales/$estudianteId'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(respuestas),
-          )
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      }
-      throw Exception('Error al guardar respuestas: ${response.statusCode}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
-  }
+  static Future<Map<String, dynamic>> createOpcion(Map<String, dynamic> data) async =>
+      await _post('/evaluaciones/opciones', data) as Map<String, dynamic>;
 
-  static Future<List<Map<String, dynamic>>> obtenerRespuestasPersonales(
-      int estudianteId) async {
-    try {
-      final response = await http
-          .get(Uri.parse(
-              '$baseUrl/recomendaciones-automaticas/preguntas-personales/$estudianteId'))
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
-        return data.map((r) => r as Map<String, dynamic>).toList();
-      }
-      return [];
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
-  }
+  static Future<void> updateOpcion(int id, Map<String, dynamic> data) async =>
+      await _put('/evaluaciones/opciones/$id', data);
 
-  // ==================== ACTUALIZAR NOMBRE DE USUARIO ====================
-  static Future<Map<String, dynamic>> actualizarNombreEstudiante(
-      int estudianteId, String nuevoNombre) async {
-    try {
-      final response = await http
-          .put(
-            Uri.parse('$baseUrl/estudiantes/$estudianteId/nombre'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'nombre': nuevoNombre}),
-          )
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      }
-      throw Exception('Error al actualizar nombre: ${response.statusCode}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
-  }
+  static Future<void> deleteOpcion(int id) async =>
+      await _delete('/evaluaciones/opciones/$id');
 
-  // ==================== ROLES ====================
-  static Future<Map<String, dynamic>> cambiarRolEstudiante(
-      int estudianteId, String nuevoRol) async {
-    try {
-      final response = await http
-          .put(
-            Uri.parse('$baseUrl/estudiantes/$estudianteId/rol'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'rol': nuevoRol}),
-          )
-          .timeout(const Duration(seconds: timeoutSeconds));
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      }
-      throw Exception('Error al cambiar rol: ${response.statusCode}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
-  }
-
-  // ==================== HEALTH CHECK ====================
+  // ==================== HEALTH ====================
   static Future<bool> checkConnection() async {
     try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/../'))
-          .timeout(const Duration(seconds: timeoutSeconds));
-      return response.statusCode == 200;
-    } catch (e) {
+      final r = await http
+          .get(Uri.parse(baseUrl.replaceAll('/api', '/')))
+          .timeout(const Duration(seconds: 5));
+      return r.statusCode == 200;
+    } catch (_) {
       return false;
     }
   }

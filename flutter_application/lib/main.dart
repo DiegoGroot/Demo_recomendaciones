@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
 import 'screens/admin_dashboard_screen.dart';
 import 'screens/estudiante_home_screen.dart';
+import 'screens/maestro_home_screen.dart';
 import 'screens/carreras_screen.dart';
-import 'screens/materias_screen.dart';
+import 'screens/tutores_screen.dart';
 import 'screens/estudiantes_screen.dart';
+import 'screens/maestros_screen.dart';
 import 'screens/calificaciones_screen.dart';
 import 'screens/recomendaciones_screen.dart';
 import 'services/auth_service.dart';
@@ -22,7 +24,7 @@ class MyApp extends StatelessWidget {
       title: 'SIRA',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue.shade700),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
         useMaterial3: true,
       ),
       home: const AuthWrapper(),
@@ -30,32 +32,45 @@ class MyApp extends StatelessWidget {
   }
 }
 
+// ─── Router principal ────────────────────────────────────────────────────────
 class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
+
   @override
   State<AuthWrapper> createState() => _AuthWrapperState();
 }
 
 class _AuthWrapperState extends State<AuthWrapper> {
-  bool _isLoggedIn = false;
-  void _onLogin(bool ok) => setState(() => _isLoggedIn = ok);
+  UserRole? _role;
+
+  void _onLogin(UserRole role) => setState(() => _role = role);
+
   void _onLogout() {
     AuthService.logout();
-    setState(() => _isLoggedIn = false);
+    setState(() => _role = null);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_isLoggedIn) return LoginScreen(onLoginSuccess: _onLogin);
-    if (AuthService.isAdmin) return AdminHomePage(onLogout: _onLogout);
-    return EstudianteHomeScreen(onLogout: _onLogout);
+    switch (_role) {
+      case UserRole.superAdmin:
+        return AdminHomePage(onLogout: _onLogout);
+      case UserRole.maestro:
+      case UserRole.tutor:
+        return MaestroHomeScreen(onLogout: _onLogout);
+      case UserRole.estudiante:
+        return EstudianteHomeScreen(onLogout: _onLogout);
+      case null:
+        return LoginScreen(onLoginSuccess: _onLogin);
+    }
   }
 }
 
-// ── Página principal del ADMIN con nav bar completo ─────────────────────────
+// ─── Home del SUPER ADMIN (NavBar completo) ──────────────────────────────────
 class AdminHomePage extends StatefulWidget {
   final VoidCallback onLogout;
   const AdminHomePage({super.key, required this.onLogout});
+
   @override
   State<AdminHomePage> createState() => _AdminHomePageState();
 }
@@ -66,7 +81,8 @@ class _AdminHomePageState extends State<AdminHomePage> {
   late final List<Widget> _screens = [
     AdminDashboardScreen(onLogout: widget.onLogout),
     const EstudiantesScreen(),
-    const MateriasScreen(),
+    const MaestrosScreen(),
+    const TutoresScreen(),
     const CarrerasScreen(),
     const CalificacionesScreen(),
     const RecomendacionesListScreen(),
@@ -84,11 +100,16 @@ class _AdminHomePageState extends State<AdminHomePage> {
         destinations: const [
           NavigationDestination(
               icon: Icon(Icons.dashboard), label: 'Dashboard'),
-          NavigationDestination(icon: Icon(Icons.person), label: 'Estudiantes'),
-          NavigationDestination(icon: Icon(Icons.book), label: 'Materias'),
-          NavigationDestination(icon: Icon(Icons.school), label: 'Carreras'),
           NavigationDestination(
-              icon: Icon(Icons.grade), label: 'Calificaciones'),
+              icon: Icon(Icons.person), label: 'Estudiantes'),
+          NavigationDestination(
+              icon: Icon(Icons.cast_for_education), label: 'Maestros'),
+          NavigationDestination(
+              icon: Icon(Icons.school), label: 'Tutores'),
+          NavigationDestination(
+              icon: Icon(Icons.school), label: 'Carreras'),
+          NavigationDestination(
+              icon: Icon(Icons.grade), label: 'Calific.'),
           NavigationDestination(
               icon: Icon(Icons.lightbulb), label: 'Recomend.'),
         ],

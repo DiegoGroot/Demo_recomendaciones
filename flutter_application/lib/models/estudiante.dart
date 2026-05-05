@@ -9,6 +9,11 @@ class Estudiante {
   final String? rol;
   final int? edad;
   final String? fechaNacimiento;
+  final String? sexo;
+  final String? nacionalidad;
+  final String? direccion;
+  final String? matricula;
+  final String? modalidad;
 
   Estudiante({
     this.estudianteId,
@@ -21,6 +26,11 @@ class Estudiante {
     this.rol,
     this.edad,
     this.fechaNacimiento,
+    this.sexo,
+    this.nacionalidad,
+    this.direccion,
+    this.matricula,
+    this.modalidad,
   });
 
   factory Estudiante.fromJson(Map<String, dynamic> json) {
@@ -35,6 +45,11 @@ class Estudiante {
       rol: json['rol'] as String?,
       edad: json['edad'] as int?,
       fechaNacimiento: json['fecha_nacimiento'] as String?,
+      sexo: json['sexo'] as String?,
+      nacionalidad: json['nacionalidad'] as String?,
+      direccion: json['direccion'] as String?,
+      matricula: json['matricula'] as String?,
+      modalidad: json['modalidad'] as String?,
     );
   }
 
@@ -47,6 +62,11 @@ class Estudiante {
       if (rol != null) 'rol': rol,
       if (edad != null) 'edad': edad,
       if (fechaNacimiento != null) 'fecha_nacimiento': fechaNacimiento,
+      if (sexo != null) 'sexo': sexo,
+      if (nacionalidad != null) 'nacionalidad': nacionalidad,
+      if (direccion != null) 'direccion': direccion,
+      if (matricula != null) 'matricula': matricula,
+      if (modalidad != null) 'modalidad': modalidad,
     };
   }
 }

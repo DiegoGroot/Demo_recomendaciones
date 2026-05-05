@@ -71,8 +71,15 @@ class _EstudiantesScreenState extends State<EstudiantesScreen> {
     final nombreCtrl = TextEditingController(text: est?.nombre ?? '');
     final correoCtrl = TextEditingController(text: est?.correo ?? '');
     final passCtrl = TextEditingController();
+    final fechaNacCtrl = TextEditingController(text: est?.fechaNacimiento ?? '');
+    final direccionCtrl = TextEditingController(text: est?.direccion ?? '');
+    final matriculaCtrl = TextEditingController(text: est?.matricula ?? '');
+    final nacionalidadCtrl = TextEditingController(text: est?.nacionalidad ?? '');
+    
     int? carreraId = est?.carreraId ??
         (_carreras.isNotEmpty ? _carreras.first.carreraId : null);
+    String? sexoVal = est?.sexo;
+    String? modalidadVal = est?.modalidad;
     bool saving = false;
 
     showModalBottomSheet(
@@ -94,6 +101,7 @@ class _EstudiantesScreenState extends State<EstudiantesScreen> {
                       style: const TextStyle(
                           fontSize: 20, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 20),
+                  // Nombre
                   TextField(
                     controller: nombreCtrl,
                     decoration: InputDecoration(
@@ -103,6 +111,7 @@ class _EstudiantesScreenState extends State<EstudiantesScreen> {
                         prefixIcon: const Icon(Icons.person)),
                   ),
                   const SizedBox(height: 12),
+                  // Correo
                   TextField(
                     controller: correoCtrl,
                     keyboardType: TextInputType.emailAddress,
@@ -113,6 +122,7 @@ class _EstudiantesScreenState extends State<EstudiantesScreen> {
                         prefixIcon: const Icon(Icons.email)),
                   ),
                   const SizedBox(height: 12),
+                  // Contraseña (solo para nuevo)
                   if (est == null)
                     TextField(
                       controller: passCtrl,
@@ -124,6 +134,7 @@ class _EstudiantesScreenState extends State<EstudiantesScreen> {
                           prefixIcon: const Icon(Icons.lock)),
                     ),
                   if (est == null) const SizedBox(height: 12),
+                  // Carrera
                   DropdownButtonFormField<int>(
                     initialValue: carreraId,
                     decoration: InputDecoration(
@@ -136,6 +147,75 @@ class _EstudiantesScreenState extends State<EstudiantesScreen> {
                             value: c.carreraId, child: Text(c.nombre ?? '')))
                         .toList(),
                     onChanged: (v) => carreraId = v,
+                  ),
+                  const SizedBox(height: 12),
+                  // Fecha de Nacimiento
+                  TextField(
+                    controller: fechaNacCtrl,
+                    decoration: InputDecoration(
+                        labelText: 'Fecha de Nacimiento (YYYY-MM-DD)',
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        prefixIcon: const Icon(Icons.calendar_today)),
+                  ),
+                  const SizedBox(height: 12),
+                  // Sexo
+                  DropdownButtonFormField<String>(
+                    initialValue: sexoVal,
+                    decoration: InputDecoration(
+                        labelText: 'Sexo',
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        prefixIcon: const Icon(Icons.wc)),
+                    items: ['Masculino', 'Femenino', 'Otro']
+                        .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                        .toList(),
+                    onChanged: (v) => setS(() => sexoVal = v),
+                  ),
+                  const SizedBox(height: 12),
+                  // Nacionalidad
+                  TextField(
+                    controller: nacionalidadCtrl,
+                    decoration: InputDecoration(
+                        labelText: 'Nacionalidad',
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        prefixIcon: const Icon(Icons.public)),
+                  ),
+                  const SizedBox(height: 12),
+                  // Dirección
+                  TextField(
+                    controller: direccionCtrl,
+                    maxLines: 2,
+                    decoration: InputDecoration(
+                        labelText: 'Dirección',
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        prefixIcon: const Icon(Icons.location_on)),
+                  ),
+                  const SizedBox(height: 12),
+                  // Matrícula
+                  TextField(
+                    controller: matriculaCtrl,
+                    decoration: InputDecoration(
+                        labelText: 'Matrícula',
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        prefixIcon: const Icon(Icons.badge)),
+                  ),
+                  const SizedBox(height: 12),
+                  // Modalidad
+                  DropdownButtonFormField<String>(
+                    initialValue: modalidadVal,
+                    decoration: InputDecoration(
+                        labelText: 'Modalidad',
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        prefixIcon: const Icon(Icons.class_)),
+                    items: ['Presencial', 'Virtual', 'Híbrida']
+                        .map((m) => DropdownMenuItem(value: m, child: Text(m)))
+                        .toList(),
+                    onChanged: (v) => setS(() => modalidadVal = v),
                   ),
                   const SizedBox(height: 20),
                   Row(children: [
@@ -181,6 +261,12 @@ class _EstudiantesScreenState extends State<EstudiantesScreen> {
                                       ? passCtrl.text.trim()
                                       : (est.contrasena ?? ''),
                                   carreraId: carreraId,
+                                  fechaNacimiento: fechaNacCtrl.text.trim().isEmpty ? null : fechaNacCtrl.text.trim(),
+                                  sexo: sexoVal,
+                                  nacionalidad: nacionalidadCtrl.text.trim().isEmpty ? null : nacionalidadCtrl.text.trim(),
+                                  direccion: direccionCtrl.text.trim().isEmpty ? null : direccionCtrl.text.trim(),
+                                  matricula: matriculaCtrl.text.trim().isEmpty ? null : matriculaCtrl.text.trim(),
+                                  modalidad: modalidadVal,
                                 );
                                 if (est != null) {
                                   await ApiService.updateEstudiante(
@@ -342,62 +428,100 @@ class _EstudiantesScreenState extends State<EstudiantesScreen> {
       itemBuilder: (ctx, i) {
         final e = lista[i];
         return Card(
-          margin: const EdgeInsets.only(bottom: 10),
+          margin: const EdgeInsets.only(bottom: 12),
           elevation: 2,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            leading: CircleAvatar(
-              backgroundColor: Colors.blue.shade700,
-              child: Text(e.nombre[0].toUpperCase(),
-                  style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-            title: Text(e.nombre,
-                style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(e.correo,
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-              Text(_carreraNombre(e.carreraId),
-                  style: TextStyle(color: Colors.blue.shade600, fontSize: 12)),
-            ]),
-            trailing: PopupMenuButton<String>(
-              onSelected: (action) {
-                if (action == 'edit') _showForm(e);
-                if (action == 'delete') _confirmDelete(e);
-                if (action == 'recs') {
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => RecomendacionesScreen(estudiante: e),
-                      ));
-                }
-              },
-              itemBuilder: (_) => [
-                const PopupMenuItem(
-                    value: 'recs',
-                    child: Row(children: [
-                      Icon(Icons.lightbulb, color: Colors.purple),
-                      SizedBox(width: 8),
-                      Text('Ver Recomendaciones')
-                    ])),
-                const PopupMenuItem(
-                    value: 'edit',
-                    child: Row(children: [
-                      Icon(Icons.edit),
-                      SizedBox(width: 8),
-                      Text('Editar')
-                    ])),
-                const PopupMenuItem(
-                    value: 'delete',
-                    child: Row(children: [
-                      Icon(Icons.delete, color: Colors.red),
-                      SizedBox(width: 8),
-                      Text('Eliminar', style: TextStyle(color: Colors.red))
-                    ])),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.blue.shade700,
+                    radius: 24,
+                    child: Text(e.nombre.isNotEmpty ? e.nombre[0].toUpperCase() : '?',
+                        style: const TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+                  ),
+                  title: Text(e.nombre,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  subtitle:
+                      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(e.correo,
+                        style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                    Text(_carreraNombre(e.carreraId),
+                        style: TextStyle(color: Colors.blue.shade600, fontSize: 12)),
+                  ]),
+                  trailing: PopupMenuButton<String>(
+                    onSelected: (action) {
+                      if (action == 'edit') _showForm(e);
+                      if (action == 'delete') _confirmDelete(e);
+                      if (action == 'recs') {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => RecomendacionesScreen(estudiante: e),
+                            ));
+                      }
+                    },
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(
+                          value: 'recs',
+                          child: Row(children: [
+                            Icon(Icons.lightbulb, color: Colors.purple),
+                            SizedBox(width: 8),
+                            Text('Ver Recomendaciones')
+                          ])),
+                      const PopupMenuItem(
+                          value: 'edit',
+                          child: Row(children: [
+                            Icon(Icons.edit),
+                            SizedBox(width: 8),
+                            Text('Editar')
+                          ])),
+                      const PopupMenuItem(
+                          value: 'delete',
+                          child: Row(children: [
+                            Icon(Icons.delete, color: Colors.red),
+                            SizedBox(width: 8),
+                            Text('Eliminar', style: TextStyle(color: Colors.red))
+                          ])),
+                    ],
+                  ),
+                ),
+                Divider(color: Colors.grey.shade300),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  children: [
+                    if (e.matricula != null && e.matricula!.isNotEmpty)
+                      Chip(
+                        label: Text('Matrícula: ${e.matricula}'),
+                        avatar: Icon(Icons.badge, size: 18),
+                        backgroundColor: Colors.indigo.shade50,
+                      ),
+                    if (e.sexo != null && e.sexo!.isNotEmpty)
+                      Chip(
+                        label: Text(e.sexo!),
+                        avatar: Icon(Icons.wc, size: 18),
+                        backgroundColor: Colors.pink.shade50,
+                      ),
+                    if (e.modalidad != null && e.modalidad!.isNotEmpty)
+                      Chip(
+                        label: Text(e.modalidad!),
+                        avatar: Icon(Icons.class_, size: 18),
+                        backgroundColor: Colors.green.shade50,
+                      ),
+                    if (e.nacionalidad != null && e.nacionalidad!.isNotEmpty)
+                      Chip(
+                        label: Text(e.nacionalidad!),
+                        avatar: Icon(Icons.public, size: 18),
+                        backgroundColor: Colors.amber.shade50,
+                      ),
+                  ],
+                ),
               ],
             ),
           ),
