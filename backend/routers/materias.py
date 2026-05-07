@@ -8,11 +8,17 @@ router = APIRouter()
 
 class MateriaCreate(BaseModel):
     nombre: str
+    codigo: Optional[str] = None
     descripcion: Optional[str] = ""
+    creditos: int = 3
+    semestre: int = 1
+    carrera_id: Optional[int] = 1
 
 class MateriaUpdate(BaseModel):
     nombre: Optional[str] = None
     descripcion: Optional[str] = None
+    creditos: Optional[int] = None
+    semestre: Optional[int] = None
 
 @router.get("")
 def listar_materias(db=Depends(get_db)):
@@ -46,15 +52,15 @@ def obtener_materia(materia_id: int, db=Depends(get_db)):
 def crear_materia(data: MateriaCreate, db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
     try:
-        codigo = data.nombre.upper()[:20]
+        codigo = data.codigo or data.nombre.upper()[:20]
         cursor.execute("SELECT materia_id FROM sira.materia WHERE codigo = %s", (codigo,))
         if cursor.fetchone():
             cursor.close()
             raise HTTPException(status_code=409, detail="Ya existe una materia con ese código")
         
         cursor.execute(
-            "INSERT INTO sira.materia (nombre, codigo, carrera_id, descripcion) VALUES (%s, %s, %s, %s)",
-            (data.nombre, codigo, 1, data.descripcion)
+            "INSERT INTO sira.materia (nombre, codigo, carrera_id, descripcion, creditos, semestre) VALUES (%s, %s, %s, %s, %s, %s)",
+            (data.nombre, codigo, data.carrera_id, data.descripcion, data.creditos, data.semestre)
         )
         db.commit()
         id_creada = cursor.lastrowid

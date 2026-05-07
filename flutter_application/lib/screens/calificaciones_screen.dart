@@ -129,7 +129,7 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                 // ── Estudiante ────────────────────────────────────────────
                 _label('Estudiante *'),
                 DropdownButtonFormField<int>(
-                  value: estId,
+                  initialValue: estId,
                   decoration: _deco('Selecciona estudiante', Icons.person),
                   items: _estudiantes
                       .map(
@@ -151,7 +151,7 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                 // ── Materia ───────────────────────────────────────────────
                 _label('Materia *'),
                 DropdownButtonFormField<int>(
-                  value: matId,
+                  initialValue: matId,
                   decoration: _deco('Selecciona materia', Icons.book),
                   items: _materias
                       .map(
@@ -224,7 +224,7 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                 // ── Estado ────────────────────────────────────────────────
                 _label('Estado'),
                 DropdownButtonFormField<String>(
-                  value: estado,
+                  initialValue: estado,
                   decoration: _deco('Estado', Icons.info_outline),
                   items: const [
                     DropdownMenuItem(

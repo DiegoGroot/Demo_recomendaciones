@@ -2,13 +2,11 @@ import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
 import 'screens/admin_dashboard_screen.dart';
 import 'screens/estudiante_home_screen.dart';
-import 'screens/maestro_home_screen.dart';
 import 'screens/carreras_screen.dart';
-import 'screens/tutores_screen.dart';
 import 'screens/estudiantes_screen.dart';
-import 'screens/maestros_screen.dart';
 import 'screens/calificaciones_screen.dart';
 import 'screens/recomendaciones_screen.dart';
+import 'screens/materias_screen.dart';
 import 'services/auth_service.dart';
 
 void main() {
@@ -32,7 +30,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// ─── Router principal ────────────────────────────────────────────────────────
 class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
@@ -55,9 +52,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
     switch (_role) {
       case UserRole.superAdmin:
         return AdminHomePage(onLogout: _onLogout);
-      case UserRole.maestro:
-      case UserRole.tutor:
-        return MaestroHomeScreen(onLogout: _onLogout);
       case UserRole.estudiante:
         return EstudianteHomeScreen(onLogout: _onLogout);
       case null:
@@ -66,7 +60,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
   }
 }
 
-// ─── Home del SUPER ADMIN (NavBar completo) ──────────────────────────────────
 class AdminHomePage extends StatefulWidget {
   final VoidCallback onLogout;
   const AdminHomePage({super.key, required this.onLogout});
@@ -81,9 +74,8 @@ class _AdminHomePageState extends State<AdminHomePage> {
   late final List<Widget> _screens = [
     AdminDashboardScreen(onLogout: widget.onLogout),
     const EstudiantesScreen(),
-    const MaestrosScreen(),
-    const TutoresScreen(),
     const CarrerasScreen(),
+    const MateriasScreen(),
     const CalificacionesScreen(),
     const RecomendacionesListScreen(),
   ];
@@ -98,20 +90,12 @@ class _AdminHomePageState extends State<AdminHomePage> {
         backgroundColor: Colors.indigo.shade50,
         indicatorColor: Colors.indigo.shade100,
         destinations: const [
-          NavigationDestination(
-              icon: Icon(Icons.dashboard), label: 'Dashboard'),
-          NavigationDestination(
-              icon: Icon(Icons.person), label: 'Estudiantes'),
-          NavigationDestination(
-              icon: Icon(Icons.cast_for_education), label: 'Maestros'),
-          NavigationDestination(
-              icon: Icon(Icons.school), label: 'Tutores'),
-          NavigationDestination(
-              icon: Icon(Icons.school), label: 'Carreras'),
-          NavigationDestination(
-              icon: Icon(Icons.grade), label: 'Calific.'),
-          NavigationDestination(
-              icon: Icon(Icons.lightbulb), label: 'Recomend.'),
+          NavigationDestination(icon: Icon(Icons.dashboard), label: 'Dashboard'),
+          NavigationDestination(icon: Icon(Icons.person), label: 'Estudiantes'),
+          NavigationDestination(icon: Icon(Icons.school_outlined), label: 'Carreras'),
+          NavigationDestination(icon: Icon(Icons.book), label: 'Materias'),
+          NavigationDestination(icon: Icon(Icons.grade), label: 'Calific.'),
+          NavigationDestination(icon: Icon(Icons.lightbulb), label: 'Recomend.'),
         ],
       ),
     );

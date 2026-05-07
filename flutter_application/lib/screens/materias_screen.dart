@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/materia.dart';
+import '../models/carrera.dart';
 import '../services/api_service.dart';
 
 class MateriasScreen extends StatefulWidget {
@@ -10,455 +11,386 @@ class MateriasScreen extends StatefulWidget {
 }
 
 class _MateriasScreenState extends State<MateriasScreen> {
-  late Future<List<Materia>> _futureMaterias;
-  final List<Map<String, dynamic>> _mockMaterias = [
-    {
-      'id': 1,
-      'nombre': 'Programación I',
-      'codigo': 'PROG101',
-      'creditos': 3,
-      'carrera_id': 1,
-    },
-    {
-      'id': 2,
-      'nombre': 'Cálculo',
-      'codigo': 'CALC101',
-      'creditos': 4,
-      'carrera_id': 1,
-    },
-    {
-      'id': 3,
-      'nombre': 'Administración',
-      'codigo': 'ADM101',
-      'creditos': 3,
-      'carrera_id': 2,
-    },
-  ];
+  List<Materia>  _materias = [];
+  List<Carrera>  _carreras = [];
+  bool   _loading = true;
+  String? _error;
+  String _search = '';
+  int?   _filtroCarrera; // null = todas
 
   @override
   void initState() {
     super.initState();
-    _futureMaterias = _getMaterias();
+    _load();
   }
 
-  Future<List<Materia>> _getMaterias() async {
+  Future<void> _load() async {
+    setState(() { _loading = true; _error = null; });
     try {
-      return await ApiService.getMaterias();
+      final res = await Future.wait([
+        ApiService.getMaterias(),
+        ApiService.getCarreras(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _materias = res[0] as List<Materia>;
+        _carreras = res[1] as List<Carrera>;
+        _loading  = false;
+      });
     } catch (e) {
-      // En desarrollo, retornamos datos mock
-      return _mockMaterias
-          .map(
-            (m) => Materia(
-              materiaId: m['id'] as int?,
-              nombre: m['nombre'] as String,
-              codigo: m['codigo'] as String,
-              carreraId: m['carrera_id'] as int,
-              creditos: m['creditos'] as int,
-            ),
-          )
-          .toList();
+      if (!mounted) return;
+      setState(() { _error = e.toString(); _loading = false; });
     }
   }
 
-  void _showMateriaForm([Materia? materia]) {
-    final nombreController = TextEditingController(text: materia?.nombre ?? '');
-    final creditosController = TextEditingController(
-      text: materia?.creditos.toString() ?? '',
-    );
-    int carreraId = materia?.carreraId ?? 1;
+  List<Materia> get _filtradas {
+    var lista = _materias;
+    if (_filtroCarrera != null) {
+      lista = lista.where((m) => m.carreraId == _filtroCarrera).toList();
+    }
+    if (_search.isNotEmpty) {
+      final q = _search.toLowerCase();
+      lista = lista.where((m) =>
+        m.nombre.toLowerCase().contains(q) ||
+        m.codigo.toLowerCase().contains(q)).toList();
+    }
+    return lista;
+  }
 
-    showModalBottomSheet(
+  String _nombreCarrera(int? id) {
+    if (id == null) return 'Sin carrera';
+    try { return _carreras.firstWhere((c) => c.carreraId == id).nombre ?? 'Carrera $id'; }
+    catch (_) { return 'Carrera $id'; }
+  }
+
+  // ── Formulario crear / editar ────────────────────────────────────────────
+  void _showForm([Materia? mat]) {
+    final nombreCtrl   = TextEditingController(text: mat?.nombre ?? '');
+    final codigoCtrl   = TextEditingController(text: mat?.codigo ?? '');
+    final creditosCtrl = TextEditingController(text: mat?.creditos?.toString() ?? '');
+    final semestreCtrl = TextEditingController(text: mat?.semestre?.toString() ?? '');
+    int? carreraId = mat?.carreraId ?? (_carreras.isNotEmpty ? _carreras.first.carreraId : null);
+    bool saving = false;
+
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-          left: 16,
-          right: 16,
-          top: 16,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                materia == null ? 'Nueva Materia' : 'Editar Materia',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 24),
-              TextField(
-                controller: nombreController,
-                decoration: InputDecoration(
-                  labelText: 'Nombre',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  filled: true,
-                  fillColor: Colors.grey.shade50,
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: creditosController,
-                decoration: InputDecoration(
-                  labelText: 'Créditos',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  filled: true,
-                  fillColor: Colors.grey.shade50,
-                ),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<int>(
-                initialValue: carreraId,
-                items: const [
-                  DropdownMenuItem(value: 1, child: Text('Ingeniería')),
-                  DropdownMenuItem(value: 2, child: Text('Negocios')),
-                  DropdownMenuItem(value: 3, child: Text('Medicina')),
-                ],
-                onChanged: (value) {
-                  carreraId = value ?? 1;
-                },
-                decoration: InputDecoration(
-                  labelText: 'Carrera',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  filled: true,
-                  fillColor: Colors.grey.shade50,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text('Cancelar'),
-                    ),
-                  ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          title: Text(mat == null ? 'Nueva Materia' : 'Editar Materia',
+              style: const TextStyle(fontWeight: FontWeight.bold)),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                _field(nombreCtrl,   'Nombre *',  Icons.book),
+                const SizedBox(height: 12),
+                _field(codigoCtrl,   'Código',    Icons.qr_code),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(child: _field(creditosCtrl, 'Créditos', Icons.stars,
+                      type: TextInputType.number)),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        if (nombreController.text.isEmpty ||
-                            creditosController.text.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Por favor completa todos los campos',
-                              ),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                          return;
-                        }
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              materia == null
-                                  ? 'Materia creada exitosamente'
-                                  : 'Materia actualizada exitosamente',
-                            ),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
-                        setState(() {
-                          _futureMaterias = _getMaterias();
-                        });
-                      },
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        backgroundColor: Colors.blue.shade700,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: Text(
-                        materia == null ? 'Crear' : 'Actualizar',
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ),
+                  Expanded(child: _field(semestreCtrl, 'Semestre', Icons.looks_one,
+                      type: TextInputType.number)),
+                ]),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  initialValue: carreraId,
+                  decoration: InputDecoration(
+                    labelText: 'Programa Educativo *',
+                    prefixIcon: const Icon(Icons.school),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
+                  items: _carreras.map((c) => DropdownMenuItem(
+                    value: c.carreraId,
+                    child: Text(c.nombre ?? '', overflow: TextOverflow.ellipsis),
+                  )).toList(),
+                  onChanged: (v) => setS(() => carreraId = v),
+                ),
+                if (saving) ...[
+                  const SizedBox(height: 16),
+                  const LinearProgressIndicator(),
                 ],
-              ),
-              const SizedBox(height: 16),
-            ],
+              ]),
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton.icon(
+              onPressed: saving ? null : () async {
+                if (nombreCtrl.text.trim().isEmpty || carreraId == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Nombre y programa educativo son obligatorios'),
+                    backgroundColor: Colors.red));
+                  return;
+                }
+                setS(() => saving = true);
+                try {
+                  final nueva = Materia(
+                    materiaId: mat?.materiaId,
+                    nombre: nombreCtrl.text.trim(),
+                    codigo: codigoCtrl.text.trim(),
+                    creditos: int.tryParse(creditosCtrl.text) ?? 3,
+                    semestre: int.tryParse(semestreCtrl.text),
+                    carreraId: carreraId!,
+                  );
+                  if (mat != null) {
+                    await ApiService.updateMateria(mat.materiaId!, nueva);
+                  } else {
+                    await ApiService.createMateria(nueva);
+                  }
+                  if (!ctx.mounted) return;
+                  Navigator.pop(ctx);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(mat == null ? 'Materia creada ✅' : 'Materia actualizada ✅'),
+                      backgroundColor: Colors.green));
+                    _load();
+                  }
+                } catch (e) {
+                  setS(() => saving = false);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+                  }
+                }
+              },
+              icon: const Icon(Icons.save),
+              label: Text(mat == null ? 'Crear' : 'Guardar'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue.shade700,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
+
+  void _confirmDelete(Materia m) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar materia'),
+        content: Text('¿Eliminar "${m.nombre}"? No se puede deshacer.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await ApiService.deleteMateria(m.materiaId!);
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('Materia eliminada'), backgroundColor: Colors.orange));
+                _load();
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _field(TextEditingController c, String label, IconData icon,
+      {TextInputType type = TextInputType.text}) =>
+      TextField(
+        controller: c, keyboardType: type,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('📚 Mis Materias'),
-        elevation: 0,
+        title: Text('Materias (${_filtradas.length})'),
         backgroundColor: Colors.blue.shade700,
         foregroundColor: Colors.white,
+        elevation: 0,
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _load)],
       ),
-      body: FutureBuilder<List<Materia>>(
-        future: _futureMaterias,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircularProgressIndicator(),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Icon(Icons.wifi_off, size: 64, color: Colors.red.shade300),
+                  const SizedBox(height: 12),
+                  const Text('No se pudo cargar materias'),
                   const SizedBox(height: 16),
-                  Text(
-                    'Cargando tus materias...',
-                    style: Theme.of(context).textTheme.bodyLarge,
-                  ),
-                ],
-              ),
-            );
-          }
-
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.error_outline,
-                    size: 64,
-                    color: Colors.red.shade400,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Oops, hubo un problema',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'No pudimos cargar las materias. Intenta de nuevo.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        _futureMaterias = _getMaterias();
-                      });
-                    },
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Reintentar'),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          final materias = snapshot.data ?? [];
-
-          if (materias.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.book, size: 64, color: Colors.grey.shade300),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Sin materias registradas',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Crea tu primera materia para comenzar',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    onPressed: () => _showMateriaForm(),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Crear Materia'),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: materias.length,
-            itemBuilder: (context, index) {
-              final materia = materias[index];
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Card(
-                  elevation: 3,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          Colors.blue.shade50,
-                          Colors.blue.shade100.withValues(alpha: 0.5),
-                        ],
-                      ),
-                    ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.all(16),
-                      leading: Container(
-                        width: 60,
-                        height: 60,
-                        decoration: BoxDecoration(
-                          color: Colors.blue.shade700,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.blue.shade700.withValues(alpha: 0.3),
-                              blurRadius: 8,
-                            ),
-                          ],
+                  ElevatedButton.icon(onPressed: _load,
+                    icon: const Icon(Icons.refresh), label: const Text('Reintentar')),
+                ]))
+              : Column(children: [
+                  // ── Barra búsqueda + filtro carrera ──────────────────────
+                  Container(
+                    color: Colors.blue.shade50,
+                    padding: const EdgeInsets.all(12),
+                    child: Column(children: [
+                      TextField(
+                        decoration: InputDecoration(
+                          hintText: 'Buscar materia o código...',
+                          prefixIcon: const Icon(Icons.search),
+                          filled: true, fillColor: Colors.white,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none),
+                          isDense: true,
                         ),
-                        child: Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                '${materia.creditos}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 20,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              Text(
-                                'créditos',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.white.withValues(alpha: 0.8),
-                                ),
+                        onChanged: (v) => setState(() => _search = v),
+                      ),
+                      const SizedBox(height: 8),
+                      // Chips de filtro por carrera
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(children: [
+                          _filtroChip(null, 'Todas'),
+                          ..._carreras.map((c) => _filtroChip(c.carreraId, c.nombre ?? '')),
+                        ]),
+                      ),
+                    ]),
+                  ),
+
+                  // ── Lista de materias ─────────────────────────────────
+                  Expanded(
+                    child: _filtradas.isEmpty
+                        ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            Icon(Icons.book_outlined, size: 64, color: Colors.grey.shade300),
+                            const SizedBox(height: 12),
+                            Text(_search.isEmpty && _filtroCarrera == null
+                                ? 'Sin materias registradas'
+                                : 'No hay materias con ese filtro',
+                                style: TextStyle(color: Colors.grey.shade500)),
+                            if (_search.isEmpty && _filtroCarrera == null) ...[
+                              const SizedBox(height: 16),
+                              ElevatedButton.icon(
+                                onPressed: () => _showForm(),
+                                icon: const Icon(Icons.add),
+                                label: const Text('Crear primera materia'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue.shade700,
+                                  foregroundColor: Colors.white),
                               ),
                             ],
+                          ]))
+                        : ListView.builder(
+                            padding: const EdgeInsets.all(12),
+                            itemCount: _filtradas.length,
+                            itemBuilder: (_, i) => _materiaCard(_filtradas[i]),
                           ),
-                        ),
-                      ),
-                      title: Text(
-                        materia.nombre,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      subtitle: Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                          'Código: ${materia.codigo}',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ),
-                      trailing: PopupMenuButton(
-                        itemBuilder: (context) => [
-                          PopupMenuItem(
-                            child: const Row(
-                              children: [
-                                Icon(Icons.edit, size: 20, color: Colors.blue),
-                                SizedBox(width: 8),
-                                Text('Editar'),
-                              ],
-                            ),
-                            onTap: () => _showMateriaForm(materia),
-                          ),
-                          PopupMenuItem(
-                            child: const Row(
-                              children: [
-                                Icon(Icons.delete, size: 20, color: Colors.red),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Eliminar',
-                                  style: TextStyle(color: Colors.red),
-                                ),
-                              ],
-                            ),
-                            onTap: () {
-                              showDialog(
-                                context: context,
-                                builder: (context) => AlertDialog(
-                                  title: const Text('¿Eliminar materia?'),
-                                  content: Text(
-                                    '¿Estás seguro de que deseas eliminar "${materia.nombre}"? Esta acción no se puede deshacer.',
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context),
-                                      child: const Text('Cancelar'),
-                                    ),
-                                    TextButton(
-                                      onPressed: () {
-                                        Navigator.pop(context);
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              '✓ "${materia.nombre}" eliminada',
-                                            ),
-                                            backgroundColor: Colors.green,
-                                            duration: const Duration(
-                                              seconds: 2,
-                                            ),
-                                          ),
-                                        );
-                                        setState(() {
-                                          _futureMaterias = _getMaterias();
-                                        });
-                                      },
-                                      child: const Text(
-                                        'Eliminar',
-                                        style: TextStyle(color: Colors.red),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
                   ),
-                ),
-              );
-            },
-          );
-        },
-      ),
+                ]),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showMateriaForm(),
+        onPressed: () => _showForm(),
         backgroundColor: Colors.blue.shade700,
         icon: const Icon(Icons.add),
         label: const Text('Nueva Materia'),
+      ),
+    );
+  }
+
+  Widget _filtroChip(int? carreraId, String label) {
+    final sel = _filtroCarrera == carreraId;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: FilterChip(
+        selected: sel,
+        label: Text(label, style: TextStyle(fontSize: 12,
+            color: sel ? Colors.white : Colors.blue.shade700)),
+        backgroundColor: Colors.white,
+        selectedColor: Colors.blue.shade700,
+        checkmarkColor: Colors.white,
+        side: BorderSide(color: Colors.blue.shade300),
+        onSelected: (_) => setState(() => _filtroCarrera = carreraId),
+      ),
+    );
+  }
+
+  Widget _materiaCard(Materia m) {
+    final carreraNombre = _nombreCarrera(m.carreraId);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          gradient: LinearGradient(
+            colors: [Colors.blue.shade50, Colors.white],
+            begin: Alignment.topLeft, end: Alignment.bottomRight),
+        ),
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          leading: Container(
+            width: 56, height: 56,
+            decoration: BoxDecoration(
+              color: Colors.blue.shade700,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text('${m.creditos ?? 0}',
+                  style: const TextStyle(color: Colors.white,
+                      fontWeight: FontWeight.bold, fontSize: 20)),
+              Text('créd.', style: TextStyle(color: Colors.white.withValues(alpha: 0.8),
+                  fontSize: 9)),
+            ]),
+          ),
+          title: Text(m.nombre,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+          subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Código: ${m.codigo}',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+            Row(children: [
+              Icon(Icons.school, size: 12, color: Colors.blue.shade400),
+              const SizedBox(width: 4),
+              Expanded(child: Text(carreraNombre,
+                  style: TextStyle(color: Colors.blue.shade600, fontSize: 12),
+                  overflow: TextOverflow.ellipsis)),
+              if (m.semestre != null) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.indigo.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.indigo.shade200),
+                  ),
+                  child: Text('Sem. ${m.semestre}',
+                      style: TextStyle(fontSize: 10, color: Colors.indigo.shade700,
+                          fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ]),
+          ]),
+          trailing: PopupMenuButton<String>(
+            onSelected: (v) {
+              if (v == 'edit') _showForm(m);
+              if (v == 'delete') _confirmDelete(m);
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'edit',
+                  child: Row(children: [
+                    Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('Editar')])),
+              const PopupMenuItem(value: 'delete',
+                  child: Row(children: [
+                    Icon(Icons.delete, color: Colors.red), SizedBox(width: 8),
+                    Text('Eliminar', style: TextStyle(color: Colors.red))])),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -296,4 +296,145 @@ def actualizar_nombre_estudiante(estudiante_id: int, data: dict, db=Depends(get_
     except Exception as e:
         db.rollback()
         cursor.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# GET recomendaciones por estudiante
+@router.get("/{estudiante_id}/recomendaciones")
+def obtener_recomendaciones_estudiante(estudiante_id: int, db=Depends(get_db)):
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT r.recomendacion_id, r.estudiante_id, r.materia_id, m.nombre as materia_nombre,
+                   r.tipo_recomendacion, r.descripcion, r.prioridad, r.estado,
+                   r.fecha_creacion, r.fecha_actualizacion
+            FROM sira.recomendacion r
+            LEFT JOIN sira.materia m ON r.materia_id = m.materia_id
+            WHERE r.estudiante_id = %s
+            ORDER BY r.fecha_creacion DESC
+        """, (estudiante_id,))
+        result = cursor.fetchall()
+        cursor.close()
+        return result if result else []
+    except Exception as e:
+        cursor.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# GET calificaciones por estudiante
+@router.get("/{estudiante_id}/calificaciones")
+def obtener_calificaciones_estudiante(estudiante_id: int, db=Depends(get_db)):
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT c.calificacion_id, c.estudiante_id, c.materia_id, m.nombre as materia_nombre,
+                   c.nota_parcial1, c.nota_parcial2, c.nota_parcial3, c.nota_final,
+                   c.estado, c.semestre, c.creado_en
+            FROM sira.calificacion c
+            JOIN sira.materia m ON c.materia_id = m.materia_id
+            WHERE c.estudiante_id = %s
+            ORDER BY c.creado_en DESC
+        """, (estudiante_id,))
+        result = cursor.fetchall()
+        cursor.close()
+        return result if result else []
+    except Exception as e:
+        cursor.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# GET evaluaciones por estudiante
+@router.get("/{estudiante_id}/evaluaciones")
+def obtener_evaluaciones_estudiante(estudiante_id: int, db=Depends(get_db)):
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT e.evaluacion_id, e.titulo, e.descripcion, e.estado,
+                   ee.completada, ee.calificacion, ee.iniciado_en, ee.completado_en
+            FROM sira.evaluacion e
+            LEFT JOIN sira.evaluacion_estudiante ee ON e.evaluacion_id = ee.evaluacion_id
+                AND ee.estudiante_id = %s
+            ORDER BY e.creado_en DESC
+        """, (estudiante_id,))
+        result = cursor.fetchall()
+        cursor.close()
+        return result if result else []
+    except Exception as e:
+        cursor.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# GET resultados (resumen) del estudiante
+@router.get("/{estudiante_id}/resultados")
+def obtener_resultados_estudiante(estudiante_id: int, db=Depends(get_db)):
+    cursor = db.cursor(dictionary=True)
+    try:
+        # Obtener promedio general
+        cursor.execute("""
+            SELECT AVG(nota_final) as promedio FROM sira.calificacion
+            WHERE estudiante_id = %s
+        """, (estudiante_id,))
+        prom = cursor.fetchone()
+        
+        # Contar recomendaciones activas
+        cursor.execute("""
+            SELECT COUNT(*) as total FROM sira.recomendacion
+            WHERE estudiante_id = %s AND estado = 'activa'
+        """, (estudiante_id,))
+        recs = cursor.fetchone()
+        
+        # Contar evaluaciones completadas
+        cursor.execute("""
+            SELECT COUNT(*) as total FROM sira.evaluacion_estudiante
+            WHERE estudiante_id = %s AND completada = TRUE
+        """, (estudiante_id,))
+        evals = cursor.fetchone()
+        
+        cursor.close()
+        return {
+            "promedio": prom['promedio'],
+            "recomendaciones_activas": recs['total'],
+            "evaluaciones_completadas": evals['total']
+        }
+    except Exception as e:
+        cursor.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# POST registro de estudiante
+@router.post("/registro")
+def registrar_estudiante(data: EstudianteCreate, db=Depends(get_db)):
+    cursor = db.cursor(dictionary=True)
+    try:
+        # Verificar que el correo no exista
+        cursor.execute("SELECT estudiante_id FROM sira.estudiante WHERE correo = %s", (data.correo,))
+        if cursor.fetchone():
+            cursor.close()
+            raise HTTPException(status_code=400, detail="El correo ya está registrado")
+        
+        # Insertar estudiante
+        cursor.execute("""
+            INSERT INTO sira.estudiante
+            (nombre, correo, contrasena, carrera_id, fecha_nacimiento, sexo,
+             nacionalidad, direccion, matricula, modalidad)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (data.nombre, data.correo, data.contrasena, data.carrera_id,
+              data.fecha_nacimiento, data.sexo, data.nacionalidad,
+              data.direccion, data.matricula, data.modalidad))
+        db.commit()
+        
+        # Obtener el estudiante creado
+        cursor.execute("""
+            SELECT estudiante_id, nombre, correo, carrera_id
+            FROM sira.estudiante WHERE correo = %s
+        """, (data.correo,))
+        estudiante = cursor.fetchone()
+        cursor.close()
+        return {"status": "success", "estudiante": estudiante}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        cursor.close()
+        raise HTTPException(status_code=500, detail=str(e))
         raise HTTPException(status_code=500, detail=f"Error al actualizar nombre: {str(e)}")

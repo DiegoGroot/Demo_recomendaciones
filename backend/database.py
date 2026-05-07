@@ -1,16 +1,13 @@
 import mysql.connector
 from mysql.connector import pooling
 import os
-from dotenv import load_dotenv
-
-load_dotenv()
 
 db_config = {
-    "host":     os.getenv("DB_HOST", "localhost"),
-    "user":     os.getenv("DB_USER", "root"),
-    "password": os.getenv("DB_PASSWORD", ""),
-    "database": os.getenv("DB_NAME", "sira"),
-    "port":     int(os.getenv("DB_PORT", 3306)),
+    "host": "localhost",
+    "user": "diego_user",
+    "password": "Diego123*",
+    "database": "sira",
+    "port": 3306,
 }
 
 connection_pool = None
@@ -18,11 +15,15 @@ connection_pool = None
 def get_pool():
     global connection_pool
     if connection_pool is None:
-        connection_pool = pooling.MySQLConnectionPool(
-            pool_name="sira_pool",
-            pool_size=20,
-            **db_config
-        )
+        try:
+            connection_pool = pooling.MySQLConnectionPool(
+                pool_name="sira_pool",
+                pool_size=20,
+                **db_config
+            )
+        except Exception as e:
+            print(f"Error creando el pool: {e}")
+            raise e
     return connection_pool
 
 def get_db():

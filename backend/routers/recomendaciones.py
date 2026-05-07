@@ -339,3 +339,37 @@ def generar_recomendacion_por_calificacion(calificacion_id: int, db=Depends(get_
         db.rollback()
         cursor.close()
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
+# POST calificar una recomendación
+@router.post("/{recomendacion_id}/calificar")
+def calificar_recomendacion(recomendacion_id: int, body: dict, db=Depends(get_db)):
+    """
+    Califica una recomendación (por ej. con estrellas del 1-5)
+    """
+    cursor = db.cursor(dictionary=True)
+    try:
+        # Verificar que existe
+        cursor.execute(
+            "SELECT recomendacion_id FROM sira.recomendacion WHERE recomendacion_id = %s",
+            (recomendacion_id,),
+        )
+        if not cursor.fetchone():
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Recomendación no encontrada")
+        
+        # Actualizar estado de la recomendación a resuelta
+        cursor.execute(
+            """UPDATE sira.recomendacion SET estado = 'resuelta' 
+               WHERE recomendacion_id = %s""",
+            (recomendacion_id,),
+        )
+        db.commit()
+        cursor.close()
+        return {"mensaje": "Recomendación calificada y marcada como resuelta", "recomendacion_id": recomendacion_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        cursor.close()
+        raise HTTPException(status_code=500, detail=str(e))
