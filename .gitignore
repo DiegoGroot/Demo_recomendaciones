@@ -89,3 +89,9 @@ temp/
 # OS
 Thumbs.db
 .DS_Store
+backend/.env
+backend/venv/
+flutter_application/.dart_tool/
+flutter_application/build/
+__pycache__/
+*.pyc
