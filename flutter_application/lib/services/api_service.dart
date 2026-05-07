@@ -2,208 +2,321 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../models/carrera.dart';
 import '../models/materia.dart';
-import '../models/recomendacion.dart';
 import '../models/estudiante.dart';
 import '../models/calificacion.dart';
+import '../models/recomendacion.dart';
 import '../config/app_config.dart';
 
 class ApiService {
   static String get baseUrl => AppConfig.baseUrl;
+  static Duration get _timeout => Duration(seconds: AppConfig.timeoutSeconds);
+  static Map<String, String> get _json => {'Content-Type': 'application/json'};
 
+  // ── HELPERS ───────────────────────────────────────────────────────────────
   static Future<dynamic> _get(String path) async {
-    final r = await http.get(Uri.parse('$baseUrl$path'));
+    final r = await http.get(Uri.parse('$baseUrl$path')).timeout(_timeout);
     if (r.statusCode == 200) return jsonDecode(r.body);
-    throw Exception('Error GET: ${r.statusCode}');
+    throw Exception('GET $path → ${r.statusCode}: ${r.body}');
   }
 
-  static Future<dynamic> _post(String path, dynamic data) async {
-    final r = await http.post(
-      Uri.parse('$baseUrl$path'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(data),
-    );
+  static Future<dynamic> _post(String path, Map<String, dynamic> body) async {
+    final r = await http
+        .post(Uri.parse('$baseUrl$path'), headers: _json, body: jsonEncode(body))
+        .timeout(_timeout);
     if (r.statusCode == 200 || r.statusCode == 201) return jsonDecode(r.body);
-    throw Exception('Error POST: ${r.statusCode} - ${r.body}');
+    throw Exception('POST $path → ${r.statusCode}: ${r.body}');
   }
 
-  static Future<dynamic> _put(String path, dynamic data) async {
-    final r = await http.put(
-      Uri.parse('$baseUrl$path'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(data),
-    );
+  static Future<dynamic> _put(String path, Map<String, dynamic> body) async {
+    final r = await http
+        .put(Uri.parse('$baseUrl$path'), headers: _json, body: jsonEncode(body))
+        .timeout(_timeout);
     if (r.statusCode == 200) return jsonDecode(r.body);
-    throw Exception('Error PUT: ${r.statusCode}');
+    throw Exception('PUT $path → ${r.statusCode}: ${r.body}');
   }
 
   static Future<void> _delete(String path) async {
-    final r = await http.delete(Uri.parse('$baseUrl$path'));
+    final r = await http.delete(Uri.parse('$baseUrl$path')).timeout(_timeout);
     if (r.statusCode != 200 && r.statusCode != 204) {
-      throw Exception('Error DELETE: ${r.statusCode}');
+      throw Exception('DELETE $path → ${r.statusCode}: ${r.body}');
     }
   }
 
-  // ============ MATERIAS ============
-  static Future<List<Materia>> getMaterias() async {
-    final data = await _get('/materias');
-    return (data as List).map((i) => Materia.fromJson(i)).toList();
-  }
+  // ==================== AUTH ====================
+  static Future<Map<String, dynamic>> loginEstudiante(
+      String correo, String contrasena) async =>
+      await _post('/auth/estudiantes/login',
+          {'correo': correo.trim(), 'contrasena': contrasena.trim()}) as Map<String, dynamic>;
 
-  static Future<Materia> createMateria(Materia materia) async {
-    final data = await _post('/materias', materia.toJson());
-    return Materia.fromJson(data);
-  }
+  static Future<Map<String, dynamic>> loginMaestro(
+      String correo, String contrasena) async =>
+      await _post('/auth/maestros/login',
+          {'correo': correo.trim(), 'contrasena': contrasena.trim()}) as Map<String, dynamic>;
 
-  static Future<Materia> updateMateria(int id, Materia materia) async {
-    final data = await _put('/materias/$id', materia.toJson());
-    return Materia.fromJson(data);
-  }
+  static Future<Map<String, dynamic>> loginTutor(
+      String correo, String contrasena) async =>
+      await _post('/auth/tutores/login',
+          {'correo': correo.trim(), 'contrasena': contrasena.trim()}) as Map<String, dynamic>;
 
-  static Future<void> deleteMateria(int id) async {
-    await _delete('/materias/$id');
-  }
+  static Future<Map<String, dynamic>> loginAdmin(
+      String correo, String contrasena) async =>
+      await _post('/auth/admin/login',
+          {'correo': correo.trim(), 'contrasena': contrasena.trim()}) as Map<String, dynamic>;
 
-  // ============ CARRERAS ============
+  static Future<Map<String, dynamic>> registrarEstudiante({
+    required String nombre,
+    required String correo,
+    required String contrasena,
+    int? carreraId,
+    String? matricula,
+  }) async =>
+      await _post('/estudiantes/registro', {
+        'nombre': nombre,
+        'correo': correo,
+        'contrasena': contrasena,
+        if (carreraId != null) 'carrera_id': carreraId,
+        if (matricula != null) 'matricula': matricula,
+      }) as Map<String, dynamic>;
+
+  // ==================== CARRERAS ====================
   static Future<List<Carrera>> getCarreras() async {
-    final data = await _get('/carreras');
-    return (data as List).map((i) => Carrera.fromJson(i)).toList();
+    final data = await _get('/carreras') as List<dynamic>;
+    return data.map((c) => Carrera.fromJson(c as Map<String, dynamic>)).toList();
   }
 
-  static Future<Carrera> createCarrera(Carrera carrera) async {
-    final data = await _post('/carreras', carrera.toJson());
-    return Carrera.fromJson(data);
+  static Future<void> createCarrera(Carrera carrera) async =>
+      await _post('/carreras', carrera.toJson());
+
+  static Future<void> updateCarrera(int id, Carrera carrera) async =>
+      await _put('/carreras/$id', carrera.toJson());
+
+  static Future<void> deleteCarrera(int id) async =>
+      await _delete('/carreras/$id');
+
+  // ==================== MATERIAS ====================
+  static Future<List<Materia>> getMaterias() async {
+    final data = await _get('/materias') as List<dynamic>;
+    return data.map((m) {
+      final map = m as Map<String, dynamic>;
+      return Materia(
+        materiaId: map['materia_id'] ?? map['id'] ?? 0,
+        nombre: map['nombre'] ?? 'Sin nombre',
+        codigo: map['codigo'] ?? '',
+        carreraId: map['carrera_id'] ?? 0,
+      );
+    }).toList();
   }
 
-  static Future<Carrera> updateCarrera(int id, Carrera carrera) async {
-    final data = await _put('/carreras/$id', carrera.toJson());
-    return Carrera.fromJson(data);
+  static Future<List<Materia>> getMateriasByCarrera(int carreraId) async {
+    final data = await _get('/materias?carrera_id=$carreraId') as List<dynamic>;
+    return data.map((m) => Materia.fromJson(m as Map<String, dynamic>)).toList();
   }
 
-  static Future<void> deleteCarrera(int id) async {
-    await _delete('/carreras/$id');
-  }
+  static Future<void> createMateria(Materia materia) async =>
+      await _post('/materias', materia.toJson());
 
-  // ============ ESTUDIANTES ============
+  static Future<void> updateMateria(int id, Materia materia) async =>
+      await _put('/materias/$id', materia.toJson());
+
+  static Future<void> deleteMateria(int id) async =>
+      await _delete('/materias/$id');
+
+  // ==================== ESTUDIANTES ====================
   static Future<List<Estudiante>> getEstudiantes() async {
-    final data = await _get('/estudiantes');
-    return (data as List).map((i) => Estudiante.fromJson(i)).toList();
+    final data = await _get('/estudiantes') as List<dynamic>;
+    return data.map((e) => Estudiante.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  static Future<Estudiante> createEstudiante(Estudiante estudiante) async {
-    final data = await _post('/estudiantes', estudiante.toJson());
+  static Future<Estudiante> getEstudianteById(int id) async {
+    final data = await _get('/estudiantes/$id') as Map<String, dynamic>;
     return Estudiante.fromJson(data);
   }
 
-  static Future<Estudiante> updateEstudiante(int id, Estudiante estudiante) async {
-    final data = await _put('/estudiantes/$id', estudiante.toJson());
-    return Estudiante.fromJson(data);
-  }
+  static Future<void> createEstudiante(Estudiante e) async =>
+      await _post('/estudiantes', e.toJson());
 
-  static Future<void> deleteEstudiante(int id) async {
-    await _delete('/estudiantes/$id');
-  }
+  static Future<void> updateEstudiante(int id, Estudiante e) async =>
+      await _put('/estudiantes/$id', e.toJson());
 
-  static Future<Map<String, dynamic>> registrarEstudiante(Estudiante estudiante) async {
-    final data = await _post('/estudiantes/registro', estudiante.toJson());
-    return data;
-  }
+  static Future<void> deleteEstudiante(int id) async =>
+      await _delete('/estudiantes/$id');
 
-  // ============ RECOMENDACIONES ============
-  static Future<List<Recomendacion>> getRecomendaciones() async {
-    final data = await _get('/recomendaciones');
-    return (data as List).map((i) => Recomendacion.fromJson(i)).toList();
-  }
-
-  static Future<List<Recomendacion>> getRecomendacionesByEstudiante(int estId) async {
-    final data = await _get('/estudiantes/$estId/recomendaciones');
-    return (data as List).map((i) => Recomendacion.fromJson(i)).toList();
-  }
-
-  static Future<Recomendacion> createRecomendacion(Recomendacion recomendacion) async {
-    final data = await _post('/recomendaciones', recomendacion.toJson());
-    return Recomendacion.fromJson(data);
-  }
-
-  static Future<Recomendacion> updateRecomendacion(int id, Recomendacion recomendacion) async {
-    final data = await _put('/recomendaciones/$id', recomendacion.toJson());
-    return Recomendacion.fromJson(data);
-  }
-
-  static Future<void> deleteRecomendacion(int id) async {
-    await _delete('/recomendaciones/$id');
-  }
-
-  static Future<Map<String, dynamic>> calificarRecomendacion(int id, int calificacion) async {
-    final data = await _post('/recomendaciones/$id/calificar', {'calificacion': calificacion});
-    return data;
-  }
-
-  // ============ CALIFICACIONES ============
+  // ==================== CALIFICACIONES ====================
   static Future<List<Calificacion>> getCalificaciones() async {
-    final data = await _get('/calificaciones');
-    return (data as List).map((i) => Calificacion.fromJson(i)).toList();
+    final data = await _get('/calificaciones') as List<dynamic>;
+    return data.map((c) => Calificacion.fromJson(c as Map<String, dynamic>)).toList();
   }
 
-  static Future<List<Calificacion>> getCalificacionesByEstudiante(int estId) async {
-    final data = await _get('/estudiantes/$estId/calificaciones');
-    return (data as List).map((i) => Calificacion.fromJson(i)).toList();
+  static Future<List<Calificacion>> getCalificacionesByEstudiante(int estudianteId) async {
+    final data = await _get('/calificaciones/estudiante/$estudianteId') as List<dynamic>;
+    return data.map((c) => Calificacion.fromJson(c as Map<String, dynamic>)).toList();
   }
 
-  static Future<Calificacion> createCalificacion(Calificacion calificacion) async {
-    final data = await _post('/calificaciones', calificacion.toJson());
-    return Calificacion.fromJson(data);
+  static Future<void> createCalificacion(Map<String, dynamic> data) async =>
+      await _post('/calificaciones', data);
+
+  static Future<void> updateCalificacion(int id, Map<String, dynamic> data) async =>
+      await _put('/calificaciones/$id', data);
+
+  static Future<void> deleteCalificacion(int id) async =>
+      await _delete('/calificaciones/$id');
+
+  static Future<Map<String, dynamic>> generarRecomendacion(int calificacionId) async =>
+      await _post('/recomendaciones/generar/por-calificacion/$calificacionId', {})
+          as Map<String, dynamic>;
+
+  // ==================== RECOMENDACIONES ====================
+  static Future<List<Recomendacion>> getRecomendaciones() async {
+    final data = await _get('/recomendaciones') as List<dynamic>;
+    return data.map((r) => Recomendacion.fromJson(r as Map<String, dynamic>)).toList();
   }
 
-  static Future<Calificacion> updateCalificacion(int id, Calificacion calificacion) async {
-    final data = await _put('/calificaciones/$id', calificacion.toJson());
-    return Calificacion.fromJson(data);
+  static Future<List<Recomendacion>> getRecomendacionesByEstudiante(int estudianteId) async {
+    try {
+      final data = await _get('/recomendaciones?estudiante_id=$estudianteId') as List<dynamic>;
+      return data.map((r) => Recomendacion.fromJson(r as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
-  // ============ EVALUACIONES ============
-  static Future<List<dynamic>> getEvaluacionesByEstudiante(int estId) async {
-    final data = await _get('/estudiantes/$estId/evaluaciones');
-    return (data as List).toList();
+  static Future<void> calificarRecomendacion(int recomendacionId, int calificacion) async =>
+      await _post('/recomendaciones/$recomendacionId/calificar', {'calificacion': calificacion});
+
+  static Future<void> createRecomendacion(Recomendacion r) async =>
+      await _post('/recomendaciones', r.toJson());
+
+  static Future<void> updateRecomendacion(int id, Recomendacion r) async =>
+      await _put('/recomendaciones/$id', r.toJson());
+
+  static Future<void> deleteRecomendacion(int id) async =>
+      await _delete('/recomendaciones/$id');
+
+  // ==================== EVALUACIONES ====================
+  static Future<List<Map<String, dynamic>>> getEvaluaciones({
+    int? recomendacionId,
+    String? estado,
+  }) async {
+    String path = '/evaluaciones';
+    final params = <String>[];
+    if (recomendacionId != null) params.add('recomendacion_id=$recomendacionId');
+    if (estado != null) params.add('estado=$estado');
+    if (params.isNotEmpty) path += '?${params.join('&')}';
+    final data = await _get(path) as List<dynamic>;
+    return data.cast<Map<String, dynamic>>();
   }
 
-  static Future<List<dynamic>> getPreguntas(int evalId) async {
-    final data = await _get('/evaluaciones/$evalId/preguntas');
-    return (data as List).toList();
+  static Future<List<Map<String, dynamic>>> getEvaluacionesByEstudiante(int estudianteId) async {
+    try {
+      final data = await _get('/evaluaciones/estudiante/$estudianteId') as List<dynamic>;
+      return List<Map<String, dynamic>>.from(data);
+    } catch (_) {
+      return [];
+    }
   }
 
-  static Future<Map<String, dynamic>> createEvaluacion(Map<String, dynamic> data) async {
-    return await _post('/evaluaciones', data);
+  static Future<Map<String, dynamic>> createEvaluacion(Map<String, dynamic> data) async =>
+      await _post('/evaluaciones', data) as Map<String, dynamic>;
+
+  static Future<void> updateEvaluacion(int id, Map<String, dynamic> data) async =>
+      await _put('/evaluaciones/$id', data);
+
+  static Future<void> deleteEvaluacion(int id) async =>
+      await _delete('/evaluaciones/$id');
+
+  // ── Preguntas ─────────────────────────────────────────────────────────────
+  static Future<List<Map<String, dynamic>>> getPreguntasByEvaluacion(int evaluacionId) async {
+    try {
+      final data = await _get('/evaluaciones/preguntas/evaluacion/$evaluacionId') as List<dynamic>;
+      return List<Map<String, dynamic>>.from(data);
+    } catch (_) {
+      return [];
+    }
   }
 
-  static Future<Map<String, dynamic>> createPregunta(Map<String, dynamic> data) async {
-    return await _post('/evaluaciones/preguntas', data);
+  static Future<Map<String, dynamic>> createPregunta(Map<String, dynamic> data) async =>
+      await _post('/evaluaciones/preguntas', data) as Map<String, dynamic>;
+
+  static Future<void> updatePregunta(int id, Map<String, dynamic> data) async =>
+      await _put('/evaluaciones/preguntas/$id', data);
+
+  static Future<void> deletePregunta(int id) async =>
+      await _delete('/evaluaciones/preguntas/$id');
+
+  // ── Opciones ──────────────────────────────────────────────────────────────
+  static Future<List<Map<String, dynamic>>> getOpcionesByPregunta(int preguntaId) async {
+    final data = await _get('/evaluaciones/opciones/pregunta/$preguntaId') as List<dynamic>;
+    return data.cast<Map<String, dynamic>>();
   }
 
-  static Future<Map<String, dynamic>> createOpcion(Map<String, dynamic> data) async {
-    return await _post('/evaluaciones/opciones', data);
+  static Future<Map<String, dynamic>> createOpcion(Map<String, dynamic> data) async =>
+      await _post('/evaluaciones/opciones', data) as Map<String, dynamic>;
+
+  static Future<void> updateOpcion(int id, Map<String, dynamic> data) async =>
+      await _put('/evaluaciones/opciones/$id', data);
+
+  static Future<void> deleteOpcion(int id) async =>
+      await _delete('/evaluaciones/opciones/$id');
+
+  // ── Respuestas del estudiante ─────────────────────────────────────────────
+  static Future<List<Map<String, dynamic>>> getPreguntas(int evaluacionId) async {
+    try {
+      final data = await _get('/evaluaciones/preguntas/evaluacion/$evaluacionId') as List<dynamic>;
+      return List<Map<String, dynamic>>.from(data);
+    } catch (_) {
+      return [];
+    }
   }
 
-  static Future<Map<String, dynamic>> submitRespuestasEstudiante(Map<String, dynamic> data) async {
-    return await _post('/evaluaciones/respuestas', data);
+  static Future<void> submitRespuestasEstudiante({
+    required int evaluacionId,
+    required int estudianteId,
+    required List<Map<String, dynamic>> respuestas,
+  }) async =>
+      await _post('/evaluaciones/respuestas/submit', {
+        'evaluacion_id': evaluacionId,
+        'estudiante_id': estudianteId,
+        'respuestas': respuestas,
+      });
+
+  static Future<List<Map<String, dynamic>>> getResultadosEstudiante(int estudianteId) async {
+    try {
+      final data = await _get('/evaluaciones/resultados/estudiante/$estudianteId') as List<dynamic>;
+      return List<Map<String, dynamic>>.from(data);
+    } catch (_) {
+      return [];
+    }
   }
 
-  static Future<Map<String, dynamic>> getResultadosEstudiante(int estId) async {
-    return await _get('/estudiantes/$estId/resultados');
+  // ==================== INSCRIPCIONES ====================
+  static Future<List<Map<String, dynamic>>> getInscripciones() async {
+    final data = await _get('/inscripciones') as List<dynamic>;
+    return data.cast<Map<String, dynamic>>();
   }
 
-  // ============ AUTH ============
-  static Future<Map<String, dynamic>> loginAdmin(String correo, String contrasena) async {
-    return await _post('/auth/admin/login', {'correo': correo, 'contrasena': contrasena}) as Map<String, dynamic>;
+  static Future<List<Map<String, dynamic>>> getInscripcionesByEstudiante(int estudianteId) async {
+    final data = await _get('/inscripciones/estudiante/$estudianteId') as List<dynamic>;
+    return data.cast<Map<String, dynamic>>();
   }
 
-  static Future<Map<String, dynamic>> loginEstudiante(String correo, String contrasena) async {
-    return await _post('/auth/estudiantes/login', {'correo': correo, 'contrasena': contrasena}) as Map<String, dynamic>;
-  }
+  static Future<Map<String, dynamic>> createInscripcion(Map<String, dynamic> data) async =>
+      await _post('/inscripciones', data) as Map<String, dynamic>;
 
-  static Future<Map<String, dynamic>> loginMaestro(String correo, String contrasena) async {
-    return await _post('/auth/maestros/login', {'correo': correo, 'contrasena': contrasena}) as Map<String, dynamic>;
-  }
+  static Future<void> updateInscripcion(int id, Map<String, dynamic> data) async =>
+      await _put('/inscripciones/$id', data);
 
-  static Future<Map<String, dynamic>> loginTutor(String correo, String contrasena) async {
-    return await _post('/auth/tutores/login', {'correo': correo, 'contrasena': contrasena}) as Map<String, dynamic>;
+  static Future<void> deleteInscripcion(int id) async =>
+      await _delete('/inscripciones/$id');
+
+  // ==================== HEALTH ====================
+  static Future<bool> checkConnection() async {
+    try {
+      final r = await http
+          .get(Uri.parse(baseUrl.replaceAll('/api', '/')))
+          .timeout(const Duration(seconds: 5));
+      return r.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
   }
 }

@@ -146,26 +146,7 @@ def evaluaciones_por_estudiante(estudiante_id: int, db=Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-@router.get("/{evaluacion_id}")
-def obtener_evaluacion(evaluacion_id: int, db=Depends(get_db)):
-    cursor = db.cursor(dictionary=True)
-    try:
-        cursor.execute("""
-            SELECT e.evaluacion_id, e.recomendacion_id, e.titulo, e.descripcion,
-                   e.estado, e.creado_en
-            FROM sira.evaluacion e
-            WHERE e.evaluacion_id = %s
-        """, (evaluacion_id,))
-        row = cursor.fetchone()
-        cursor.close()
-        if not row:
-            raise HTTPException(status_code=404, detail="Evaluación no encontrada")
-        return row
-    except HTTPException:
-        raise
-    except Exception as e:
-        cursor.close()
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+# [ruta /{evaluacion_id} movida al final]
 
 
 @router.post("", status_code=201)
@@ -644,6 +625,109 @@ def resultados_por_estudiante(estudiante_id: int, db=Depends(get_db)):
                    ev.titulo, ev.descripcion
             FROM sira.evaluacion_estudiante ee
             JOIN sira.evaluacion ev ON ee.evaluacion_id = ev.evaluacion_id
+            WHERE ee.estudiante_id = %s AND ee.completada = 1
+            ORDER BY ee.completado_en DESC
+        """, (estudiante_id,))
+        result = cursor.fetchall()
+        cursor.close()
+        return result if result else []
+    except Exception as e:
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+# ── Esta ruta debe ir AL FINAL para no capturar rutas específicas ─────────────
+@router.get("/{evaluacion_id}")
+def obtener_evaluacion(evaluacion_id: int, db=Depends(get_db)):
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT e.evaluacion_id, e.recomendacion_id, e.titulo, e.descripcion,
+                   e.estado, e.creado_en
+            FROM sira.evaluacion e
+            WHERE e.evaluacion_id = %s
+        """, (evaluacion_id,))
+        row = cursor.fetchone()
+        cursor.close()
+        if not row:
+            raise HTTPException(status_code=404, detail="Evaluación no encontrada")
+        return row
+    except HTTPException:
+        raise
+    except Exception as e:
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
+# ── GET reporte general para el admin (todas las evaluaciones completadas) ────
+@router.get("/reportes/admin")
+def reporte_admin(db=Depends(get_db)):
+    """
+    Devuelve un reporte consolidado de todas las evaluaciones completadas,
+    con nombre del estudiante, materia, recomendación y calificación del quiz.
+    Usado en el Dashboard Admin > Tab Reportes.
+    """
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT
+                ee.ee_id,
+                ee.calificacion,
+                ee.completado_en,
+                ee.iniciado_en,
+                ev.titulo,
+                ev.descripcion,
+                ev.evaluacion_id,
+                r.tipo_recomendacion,
+                r.descripcion   AS recom_descripcion,
+                r.prioridad,
+                est.nombre      AS estudiante_nombre,
+                est.estudiante_id,
+                m.nombre        AS materia_nombre
+            FROM sira.evaluacion_estudiante ee
+            JOIN sira.evaluacion ev    ON ee.evaluacion_id    = ev.evaluacion_id
+            JOIN sira.recomendacion r  ON ev.recomendacion_id = r.recomendacion_id
+            JOIN sira.estudiante est   ON ee.estudiante_id    = est.estudiante_id
+            LEFT JOIN sira.materia m   ON r.materia_id        = m.materia_id
+            WHERE ee.completada = 1
+            ORDER BY ee.completado_en DESC
+        """)
+        result = cursor.fetchall()
+        cursor.close()
+        return result if result else []
+    except Exception as e:
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error reporte: {str(e)}")
+
+
+# ── GET reporte de un estudiante específico (para el alumno) ──────────────────
+@router.get("/reportes/estudiante/{estudiante_id}")
+def reporte_estudiante(estudiante_id: int, db=Depends(get_db)):
+    """
+    Devuelve el historial de evaluaciones completadas de un estudiante,
+    con su calificación del quiz y el tipo de recomendación asociada.
+    """
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT
+                ee.ee_id,
+                ee.calificacion,
+                ee.completado_en,
+                ev.titulo,
+                ev.evaluacion_id,
+                r.tipo_recomendacion,
+                r.descripcion   AS recom_descripcion,
+                m.nombre        AS materia_nombre,
+                CASE
+                    WHEN ee.calificacion >= 8 THEN 'excelente'
+                    WHEN ee.calificacion >= 6 THEN 'satisfactorio'
+                    WHEN ee.calificacion IS NULL THEN 'sin_calificar'
+                    ELSE 'insuficiente'
+                END AS nivel_progreso
+            FROM sira.evaluacion_estudiante ee
+            JOIN sira.evaluacion ev    ON ee.evaluacion_id    = ev.evaluacion_id
+            JOIN sira.recomendacion r  ON ev.recomendacion_id = r.recomendacion_id
+            LEFT JOIN sira.materia m   ON r.materia_id        = m.materia_id
             WHERE ee.estudiante_id = %s AND ee.completada = 1
             ORDER BY ee.completado_en DESC
         """, (estudiante_id,))

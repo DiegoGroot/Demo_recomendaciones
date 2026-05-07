@@ -101,7 +101,7 @@ def obtener_recomendacion(recomendacion_id: int, db=Depends(get_db)):
 
 
 # POST crear recomendación
-@router.post("/", status_code=201)
+@router.post("", status_code=201)
 def crear_recomendacion(data: RecomendacionCreate, db=Depends(get_db)):
     cursor = db.cursor()
 
@@ -373,3 +373,152 @@ def calificar_recomendacion(recomendacion_id: int, body: dict, db=Depends(get_db
         db.rollback()
         cursor.close()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# POST crear recomendación y generar evaluación de 5 preguntas automáticamente
+@router.post("/crear-con-evaluacion", status_code=201)
+def crear_recomendacion_con_evaluacion(data: RecomendacionCreate, db=Depends(get_db)):
+    """
+    Crea una recomendación y automáticamente genera una evaluación
+    de 5 preguntas de opción múltiple basada en el tipo de recomendación.
+    """
+    cursor = db.cursor(dictionary=True)
+    try:
+        # Verificar estudiante
+        cursor.execute(
+            "SELECT nombre FROM sira.estudiante WHERE estudiante_id = %s",
+            (data.estudiante_id,)
+        )
+        est = cursor.fetchone()
+        if not est:
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Estudiante no encontrado")
+
+        if data.materia_id:
+            cursor.execute(
+                "SELECT nombre FROM sira.materia WHERE materia_id = %s",
+                (data.materia_id,)
+            )
+            mat = cursor.fetchone()
+            materia_nombre = mat['nombre'] if mat else "la materia"
+        else:
+            materia_nombre = "sus estudios"
+
+        # Insertar recomendación
+        cursor.execute(
+            """INSERT INTO sira.recomendacion
+               (estudiante_id, materia_id, tipo_recomendacion, descripcion, prioridad, estado, fuente)
+               VALUES (%s, %s, %s, %s, %s, 'activa', 'manual')""",
+            (data.estudiante_id, data.materia_id, data.tipo_recomendacion,
+             data.descripcion, data.prioridad)
+        )
+        db.commit()
+        rec_id = cursor.lastrowid
+
+        # Generar 5 preguntas según el tipo de recomendación
+        preguntas_por_tipo = {
+            "mejora_academica": [
+                ("¿Cuántas horas diarias dedicas actualmente al estudio?",
+                 [("Menos de 1 hora", False), ("1-2 horas", False), ("2-4 horas", True), ("Más de 4 horas", True)]),
+                ("¿Utilizas técnicas de estudio estructuradas?",
+                 [("No, estudio sin método", False), ("A veces", False), ("Sí, siempre", True), ("Tengo mi propio método efectivo", True)]),
+                (f"¿Entiendes los conceptos fundamentales de {materia_nombre}?",
+                 [("No los entiendo", False), ("Entiendo poco", False), ("Los entiendo en su mayoría", True), ("Los domino completamente", True)]),
+                ("¿Buscas ayuda cuando tienes dudas académicas?",
+                 [("Nunca", False), ("Rara vez", False), ("Con frecuencia", True), ("Siempre que la necesito", True)]),
+                ("¿Con qué frecuencia repasas el material de clase?",
+                 [("Nunca", False), ("Solo antes de exámenes", False), ("Semanalmente", True), ("Diariamente", True)]),
+            ],
+            "tutoria": [
+                ("¿Asistes regularmente a las sesiones de tutoría disponibles?",
+                 [("Nunca he asistido", False), ("Pocas veces", False), ("La mayoría de sesiones", True), ("Siempre asisto", True)]),
+                ("¿Identificas claramente cuáles son tus áreas de dificultad?",
+                 [("No tengo claridad", False), ("Tengo algunas ideas", False), ("Las identifico bien", True), ("Las tengo muy claras", True)]),
+                (f"¿Has pedido apoyo a tu maestro sobre {materia_nombre}?",
+                 [("Nunca", False), ("Solo una vez", False), ("Algunas veces", True), ("Con frecuencia", True)]),
+                ("¿Trabajas en grupo con tus compañeros para estudiar?",
+                 [("Nunca", False), ("Rara vez", False), ("Frecuentemente", True), ("Siempre", True)]),
+                ("¿Preparas preguntas específicas antes de ir a tutoría?",
+                 [("No, voy sin preparación", False), ("A veces", False), ("Casi siempre", True), ("Siempre me preparo", True)]),
+            ],
+            "recuperacion": [
+                (f"¿Sabes exactamente qué temas de {materia_nombre} necesitas recuperar?",
+                 [("No tengo idea", False), ("Tengo una idea vaga", False), ("Los identifico bien", True), ("Los tengo muy claros", True)]),
+                ("¿Has revisado los exámenes o trabajos reprobados para entender tus errores?",
+                 [("No los he revisado", False), ("Los revisé superficialmente", False), ("Los analicé con detalle", True), ("Los analicé y busqué soluciones", True)]),
+                ("¿Tienes un plan de acción para mejorar tu rendimiento?",
+                 [("No tengo ningún plan", False), ("Tengo ideas generales", False), ("Tengo un plan básico", True), ("Tengo un plan detallado", True)]),
+                ("¿Qué tan motivado(a) estás para mejorar tu situación académica?",
+                 [("Muy poco motivado", False), ("Algo motivado", False), ("Bastante motivado", True), ("Muy motivado y comprometido", True)]),
+                ("¿Comunicas tus dificultades académicas a tus tutores o familia?",
+                 [("Nunca", False), ("Rara vez", False), ("Con frecuencia", True), ("Siempre busco apoyo", True)]),
+            ],
+            "orientacion": [
+                ("¿Tienes claro tu objetivo académico y profesional a futuro?",
+                 [("No tengo claridad", False), ("Tengo ideas vagas", False), ("Lo tengo bastante claro", True), ("Lo tengo muy definido", True)]),
+                ("¿Conoces los recursos académicos disponibles en tu institución?",
+                 [("No conozco ninguno", False), ("Conozco pocos", False), ("Conozco los principales", True), ("Los conozco todos", True)]),
+                ("¿Participas en actividades extracurriculares relacionadas con tu carrera?",
+                 [("Nunca", False), ("Rara vez", False), ("Con frecuencia", True), ("Activamente", True)]),
+                ("¿Tienes hábitos de vida saludable que apoyen tu rendimiento académico?",
+                 [("No los tengo", False), ("Algunos hábitos", False), ("Buenos hábitos generales", True), ("Excelentes hábitos", True)]),
+                ("¿Manejas adecuadamente el estrés académico?",
+                 [("No, me afecta mucho", False), ("A veces lo manejo", False), ("Generalmente lo controlo", True), ("Lo manejo muy bien", True)]),
+            ],
+        }
+
+        tipo_key = data.tipo_recomendacion.lower().replace(" ", "_").replace("é", "e").replace("ó", "o")
+        preguntas = preguntas_por_tipo.get(tipo_key,
+            preguntas_por_tipo.get("mejora_academica"))
+
+        # Crear evaluación
+        titulo = f"Evaluación: {data.tipo_recomendacion.replace('_', ' ').title()} — {est['nombre']}"
+        cursor.execute(
+            "INSERT INTO sira.evaluacion (recomendacion_id, titulo, descripcion) VALUES (%s, %s, %s)",
+            (rec_id, titulo, f"Evaluación de seguimiento para la recomendación: {data.descripcion[:100]}")
+        )
+        db.commit()
+        eval_id = cursor.lastrowid
+
+        # Insertar 5 preguntas con opciones
+        for i, (texto, opciones) in enumerate(preguntas, 1):
+            cursor.execute(
+                """INSERT INTO sira.pregunta
+                   (evaluacion_id, texto_pregunta, tipo_pregunta, orden, requerida)
+                   VALUES (%s, %s, 'opcion_multiple', %s, 1)""",
+                (eval_id, texto, i)
+            )
+            db.commit()
+            preg_id = cursor.lastrowid
+            for j, (texto_op, es_correcta) in enumerate(opciones, 1):
+                cursor.execute(
+                    """INSERT INTO sira.opcion_respuesta
+                       (pregunta_id, texto_opcion, es_correcta, orden)
+                       VALUES (%s, %s, %s, %s)""",
+                    (preg_id, texto_op, es_correcta, j)
+                )
+        db.commit()
+
+        # Retornar recomendación + evaluación creada
+        cursor.execute(
+            """SELECT r.recomendacion_id, r.estudiante_id, e.nombre as estudiante_nombre,
+                      r.materia_id, m.nombre as materia_nombre, r.tipo_recomendacion,
+                      r.descripcion, r.prioridad, r.estado, r.fecha_creacion
+               FROM sira.recomendacion r
+               JOIN sira.estudiante e ON r.estudiante_id = e.estudiante_id
+               LEFT JOIN sira.materia m ON r.materia_id = m.materia_id
+               WHERE r.recomendacion_id = %s""",
+            (rec_id,)
+        )
+        rec = cursor.fetchone()
+        cursor.close()
+        return {**rec, "evaluacion_id": eval_id, "preguntas_generadas": len(preguntas)}
+
+    except HTTPException:
+        db.rollback()
+        cursor.close()
+        raise
+    except Exception as e:
+        db.rollback()
+        cursor.close()
+        raise HTTPException(status_code=400, detail=str(e))

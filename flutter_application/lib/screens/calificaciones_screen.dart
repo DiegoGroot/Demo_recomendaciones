@@ -18,7 +18,6 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
   List<Calificacion> _cals = [];
   List<Estudiante> _estudiantes = [];
   List<Materia> _materias = [];
-
   String _busqueda = '';
 
   @override
@@ -28,10 +27,7 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
   }
 
   Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    setState(() { _loading = true; _error = null; });
     try {
       final r = await Future.wait([
         ApiService.getCalificaciones(),
@@ -47,10 +43,7 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
+      setState(() { _error = e.toString(); _loading = false; });
     }
   }
 
@@ -65,189 +58,234 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
   }
 
   String _nombreEst(int id) {
-    try {
-      return _estudiantes.firstWhere((e) => e.estudianteId == id).nombre;
-    } catch (_) {
-      return 'Est. $id';
-    }
+    try { return _estudiantes.firstWhere((e) => e.estudianteId == id).nombre; }
+    catch (_) { return 'Est. $id'; }
   }
 
   String _nombreMat(int id) {
+    try { return _materias.firstWhere((m) => m.materiaId == id).nombre; }
+    catch (_) { return 'Mat. $id'; }
+  }
+
+  // ── Generar recomendación automática ────────────────────────────────────
+  Future<void> _generarRecomendacion(Calificacion cal) async {
+    if (cal.calificacionId == null) return;
     try {
-      return _materias.firstWhere((m) => m.materiaId == id).nombre;
-    } catch (_) {
-      return 'Mat. $id';
+      await ApiService.generarRecomendacion(cal.calificacionId!);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('✅ Recomendación generada correctamente'),
+          backgroundColor: Colors.green));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error al generar recomendación: $e'),
+          backgroundColor: Colors.red));
     }
   }
 
-  Color _colorNota(double? n) {
-    if (n == null) return Colors.grey;
-    if (n >= 3.5) return Colors.green.shade700;
-    if (n >= 2.5) return Colors.orange.shade700;
-    return Colors.red.shade700;
+  void _confirmDelete(Calificacion cal) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar calificación'),
+        content: Text(
+            '¿Eliminar la calificación de ${_nombreEst(cal.estudianteId)} en ${_nombreMat(cal.materiaId)}?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await ApiService.deleteCalificacion(cal.calificacionId!);
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Calificación eliminada'),
+                    backgroundColor: Colors.orange));
+                _load();
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
-  String _estadoLabel(String e) {
-    switch (e) {
-      case 'aprobado':
-        return 'Aprobado ✓';
-      case 'reprobado':
-        return 'Reprobado ✗';
-      case 'en_curso':
-        return 'En curso';
-      default:
-        return e;
-    }
-  }
-
-  void _abrirFormulario({Calificacion? cal}) {
+  void _showForm([Calificacion? cal]) {
     int? estId = cal?.estudianteId ??
         (_estudiantes.isNotEmpty ? _estudiantes.first.estudianteId : null);
     int? matId = cal?.materiaId ??
         (_materias.isNotEmpty ? _materias.first.materiaId : null);
+    int numParciales = cal?.numParciales ?? 2;
     String estado = cal?.estado ?? 'en_curso';
-    final p1Ctrl =
-        TextEditingController(text: cal?.notaParcial1?.toString() ?? '');
-    final p2Ctrl =
-        TextEditingController(text: cal?.notaParcial2?.toString() ?? '');
-    final fnCtrl =
-        TextEditingController(text: cal?.notaFinal?.toString() ?? '');
-    final semCtrl =
-        TextEditingController(text: cal?.semestre?.toString() ?? '');
+
+    final p1Ctrl = TextEditingController(text: cal?.notaParcial1?.toString() ?? '');
+    final p2Ctrl = TextEditingController(text: cal?.notaParcial2?.toString() ?? '');
+    final p3Ctrl = TextEditingController(text: cal?.notaParcial3?.toString() ?? '');
+    final fnCtrl = TextEditingController(text: cal?.notaFinal?.toString() ?? '');
+    final semCtrl = TextEditingController(text: cal?.semestre?.toString() ?? '1');
+    final obsCtrl = TextEditingController(text: cal?.observaciones ?? '');
     bool saving = false;
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
-          title: Text(cal == null ? 'Nueva Calificación' : 'Editar Calificación'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ── Estudiante ────────────────────────────────────────────
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(cal == null ? 'Nueva Calificación' : 'Editar Calificación',
+              style: const TextStyle(fontWeight: FontWeight.bold)),
+          content: SizedBox(
+            width: 480,
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                // ── Estudiante ──────────────────────────────────────────────
                 _label('Estudiante *'),
                 DropdownButtonFormField<int>(
                   initialValue: estId,
                   decoration: _deco('Selecciona estudiante', Icons.person),
                   items: _estudiantes
-                      .map(
-                        (e) => DropdownMenuItem(
+                      .map((e) => DropdownMenuItem(
                           value: e.estudianteId,
-                          child: Text(
-                            e.nombre,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      )
+                          child: Text(e.nombre, overflow: TextOverflow.ellipsis)))
                       .toList(),
-                  onChanged: cal == null
-                      ? (v) => setS(() => estId = v)
-                      : null,
+                  onChanged: cal == null ? (v) => setS(() => estId = v) : null,
                 ),
                 const SizedBox(height: 12),
 
-                // ── Materia ───────────────────────────────────────────────
+                // ── Materia ─────────────────────────────────────────────────
                 _label('Materia *'),
                 DropdownButtonFormField<int>(
                   initialValue: matId,
                   decoration: _deco('Selecciona materia', Icons.book),
                   items: _materias
-                      .map(
-                        (m) => DropdownMenuItem(
+                      .map((m) => DropdownMenuItem(
                           value: m.materiaId,
-                          child: Text(
-                            m.nombre,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      )
+                          child: Text(m.nombre, overflow: TextOverflow.ellipsis)))
                       .toList(),
-                  onChanged: cal == null
-                      ? (v) => setS(() => matId = v)
-                      : null,
+                  onChanged: cal == null ? (v) => setS(() => matId = v) : null,
                 ),
                 const SizedBox(height: 12),
 
-                // ── Notas ─────────────────────────────────────────────────
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _label('Parcial 1'),
-                          _numField(p1Ctrl, 'ej: 3.5'),
-                        ],
-                      ),
-                    ),
+                // ── Número de parciales ─────────────────────────────────────
+                _label('Número de Parciales'),
+                DropdownButtonFormField<int>(
+                  initialValue: numParciales,
+                  decoration: _deco('Parciales de la materia', Icons.format_list_numbered),
+                  items: const [
+                    DropdownMenuItem(value: 1, child: Text('1 Parcial')),
+                    DropdownMenuItem(value: 2, child: Text('2 Parciales')),
+                    DropdownMenuItem(value: 3, child: Text('3 Parciales')),
+                  ],
+                  onChanged: (v) => setS(() => numParciales = v ?? 2),
+                ),
+                const SizedBox(height: 12),
+
+                // ── Parciales según cantidad seleccionada ───────────────────
+                Row(children: [
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      _label('Parcial 1'),
+                      _numField(p1Ctrl, 'ej: 8.5'),
+                    ]),
+                  ),
+                  if (numParciales >= 2) ...[
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _label('Parcial 2'),
-                          _numField(p2Ctrl, 'ej: 4.0'),
-                        ],
-                      ),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        _label('Parcial 2'),
+                        _numField(p2Ctrl, 'ej: 7.0'),
+                      ]),
                     ),
                   ],
-                ),
-                const SizedBox(height: 12),
-
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _label('Nota Final *'),
-                          _numField(fnCtrl, 'ej: 3.8'),
-                        ],
-                      ),
-                    ),
+                  if (numParciales >= 3) ...[
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _label('Semestre'),
-                          _numField(semCtrl, 'ej: 1', isInt: true),
-                        ],
-                      ),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        _label('Parcial 3'),
+                        _numField(p3Ctrl, 'ej: 9.0'),
+                      ]),
                     ),
                   ],
+                ]),
+                const SizedBox(height: 8),
+
+                // Info escala
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(children: [
+                    Icon(Icons.info_outline, size: 14, color: Colors.blue.shade700),
+                    const SizedBox(width: 6),
+                    Text('Escala: 0 a 10 • Aprobado: ≥ 6.0',
+                        style: TextStyle(fontSize: 11, color: Colors.blue.shade700)),
+                  ]),
                 ),
                 const SizedBox(height: 12),
 
-                // ── Estado ────────────────────────────────────────────────
+                // ── Nota Final y Semestre ───────────────────────────────────
+                Row(children: [
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      _label('Nota Final *'),
+                      _numField(fnCtrl, 'ej: 8.0'),
+                    ]),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      _label('Semestre'),
+                      _numField(semCtrl, 'ej: 1', isInt: true),
+                    ]),
+                  ),
+                ]),
+                const SizedBox(height: 12),
+
+                // ── Estado ─────────────────────────────────────────────────
                 _label('Estado'),
                 DropdownButtonFormField<String>(
                   initialValue: estado,
                   decoration: _deco('Estado', Icons.info_outline),
                   items: const [
-                    DropdownMenuItem(
-                      value: 'en_curso',
-                      child: Text('En curso'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'aprobado',
-                      child: Text('Aprobado'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'reprobado',
-                      child: Text('Reprobado'),
-                    ),
+                    DropdownMenuItem(value: 'en_curso', child: Text('En curso')),
+                    DropdownMenuItem(value: 'aprobado', child: Text('✅ Aprobado')),
+                    DropdownMenuItem(value: 'reprobado', child: Text('❌ Reprobado')),
                   ],
                   onChanged: (v) => setS(() => estado = v ?? estado),
+                ),
+                const SizedBox(height: 12),
+
+                // ── Observaciones ───────────────────────────────────────────
+                _label('Observaciones del Maestro'),
+                TextField(
+                  controller: obsCtrl,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    hintText: 'Escribe observaciones sobre el desempeño del alumno...',
+                    hintStyle: TextStyle(fontSize: 12, color: Colors.grey.shade400),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: Colors.grey.shade300)),
+                    focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: Colors.indigo.shade400, width: 2)),
+                  ),
                 ),
 
                 if (saving) ...[
                   const SizedBox(height: 16),
                   const LinearProgressIndicator(),
                 ],
-              ],
+              ]),
             ),
           ),
           actions: [
@@ -259,54 +297,79 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
               onPressed: saving
                   ? null
                   : () async {
+                      // Validar campos obligatorios
                       if (estId == null || matId == null || fnCtrl.text.trim().isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                             content: Text('Estudiante, materia y nota final son obligatorios'),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
+                            backgroundColor: Colors.red));
                         return;
                       }
+
+                      // Validar rango 0-10
+                      final notaFinal = double.tryParse(fnCtrl.text);
+                      if (notaFinal == null || notaFinal < 0 || notaFinal > 10) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            content: Text('La nota final debe estar entre 0 y 10'),
+                            backgroundColor: Colors.red));
+                        return;
+                      }
+
+                      final p1 = double.tryParse(p1Ctrl.text);
+                      final p2 = double.tryParse(p2Ctrl.text);
+                      final p3 = double.tryParse(p3Ctrl.text);
+
+                      for (final nota in [p1, p2, p3]) {
+                        if (nota != null && (nota < 0 || nota > 10)) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                              content: Text('Las notas deben estar entre 0 y 10'),
+                              backgroundColor: Colors.red));
+                          return;
+                        }
+                      }
+
                       setS(() => saving = true);
                       try {
-                        final nueva = Calificacion(
-                          calificacionId: cal?.calificacionId,
-                          estudianteId: estId!,
-                          materiaId: matId!,
-                          notaParcial1: double.tryParse(p1Ctrl.text),
-                          notaParcial2: double.tryParse(p2Ctrl.text),
-                          notaFinal: double.tryParse(fnCtrl.text),
-                          semestre: int.tryParse(semCtrl.text),
-                          estado: estado,
-                        );
+                        final body = <String, dynamic>{
+                          'estudiante_id': estId!,
+                          'materia_id': matId!,
+                          if (p1 != null) 'parcial1': p1,
+                          if (numParciales >= 2 && p2 != null) 'parcial2': p2,
+                          if (numParciales >= 3 && p3 != null) 'parcial3': p3,
+                          'nota_final': notaFinal,
+                          'semestre': int.tryParse(semCtrl.text) ?? 1,
+                          'estado': estado,
+                          if (obsCtrl.text.trim().isNotEmpty) 'observaciones': obsCtrl.text.trim(),
+                          'num_parciales': numParciales,
+                        };
                         if (cal != null) {
-                          await ApiService.updateCalificacion(cal.calificacionId!, nueva);
+                          await ApiService.updateCalificacion(cal.calificacionId!, body);
                         } else {
-                          await ApiService.createCalificacion(nueva);
+                          await ApiService.createCalificacion(body);
                         }
                         if (!ctx.mounted) return;
                         Navigator.pop(ctx);
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                            content: Text(cal == null
-                                ? 'Calificación creada ✅'
-                                : 'Calificación actualizada ✅'),
-                            backgroundColor: Colors.green,
-                          ));
+                              content: Text(cal == null
+                                  ? 'Calificación creada ✅'
+                                  : 'Calificación actualizada ✅'),
+                              backgroundColor: Colors.green));
                           _load();
                         }
                       } catch (e) {
                         setS(() => saving = false);
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-                          );
+                              SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
                         }
                       }
                     },
               icon: const Icon(Icons.save),
               label: Text(cal == null ? 'Guardar' : 'Actualizar'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.indigo.shade700,
+                foregroundColor: Colors.white,
+              ),
             ),
           ],
         ),
@@ -318,365 +381,291 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
         hintText: hint,
         prefixIcon: Icon(icon, size: 18),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-        isDense: true,
+        enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: Colors.grey.shade300)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       );
 
-  Widget _label(String t) => Padding(
+  Widget _label(String text) => Padding(
         padding: const EdgeInsets.only(bottom: 4),
-        child: Text(
-          t,
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-        ),
+        child: Text(text,
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade700)),
       );
 
-  Widget _numField(
-    TextEditingController c,
-    String hint, {
-    bool isInt = false,
-  }) =>
+  Widget _numField(TextEditingController ctrl, String hint, {bool isInt = false}) =>
       TextField(
-        controller: c,
-        keyboardType: TextInputType.numberWithOptions(decimal: !isInt),
+        controller: ctrl,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
         decoration: InputDecoration(
           hintText: hint,
+          hintStyle: TextStyle(fontSize: 12, color: Colors.grey.shade400),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-          isDense: true,
+          enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: Colors.grey.shade300)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         ),
       );
+
+  Color _colorNota(double? nota) {
+    if (nota == null) return Colors.grey;
+    if (nota >= 8) return Colors.green.shade700;
+    if (nota >= 6) return Colors.orange.shade700;
+    return Colors.red.shade700;
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Calificaciones'),
+        title: Text('Calificaciones (${_filtradas.length} registros)'),
         backgroundColor: Colors.indigo.shade700,
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: ElevatedButton.icon(
-              onPressed: _estudiantes.isEmpty ? null : () => _abrirFormulario(),
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Agregar'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.indigo.shade700,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
+          IconButton(
+            icon: const Icon(Icons.add),
+            tooltip: 'Agregar',
+            onPressed: () => _showForm(),
           ),
         ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? _errorWidget()
-              : Column(
-                  children: [
-                    // ── Barra de búsqueda + contador ──────────────────────
-                    Container(
-                      color: Colors.indigo.shade50,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              decoration: InputDecoration(
-                                hintText: 'Buscar por estudiante o materia...',
-                                prefixIcon: const Icon(Icons.search, size: 20),
-                                filled: true,
-                                fillColor: Colors.white,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  vertical: 0,
-                                ),
-                                isDense: true,
-                              ),
-                              onChanged: (v) => setState(() => _busqueda = v),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.indigo.shade700,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              '${_filtradas.length} registros',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                        ],
+              ? Center(
+                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(Icons.error_outline, size: 64, color: Colors.red.shade300),
+                    const SizedBox(height: 16),
+                    Text('Error: $_error'),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                        onPressed: _load,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Reintentar')),
+                  ]))
+              : Column(children: [
+                  // Buscador
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: TextField(
+                      onChanged: (v) => setState(() => _busqueda = v),
+                      decoration: InputDecoration(
+                        hintText: 'Buscar por estudiante o materia...',
+                        prefixIcon: const Icon(Icons.search),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        filled: true,
+                        fillColor: Colors.grey.shade50,
+                        suffixText: '${_filtradas.length} registros',
                       ),
                     ),
+                  ),
+                  Expanded(
+                    child: _filtradas.isEmpty
+                        ? Center(
+                            child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                              Icon(Icons.grade_outlined,
+                                  size: 64, color: Colors.grey.shade300),
+                              const SizedBox(height: 16),
+                              const Text('No hay calificaciones'),
+                              const SizedBox(height: 8),
+                              ElevatedButton.icon(
+                                onPressed: () => _showForm(),
+                                icon: const Icon(Icons.add),
+                                label: const Text('Agregar primera'),
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.indigo.shade700,
+                                    foregroundColor: Colors.white),
+                              ),
+                            ]))
+                        : RefreshIndicator(
+                            onRefresh: _load,
+                            child: ListView.builder(
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              itemCount: _filtradas.length,
+                              itemBuilder: (ctx, i) => _calCard(_filtradas[i]),
+                            ),
+                          ),
+                  ),
+                ]),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showForm(),
+        backgroundColor: Colors.indigo.shade700,
+        icon: const Icon(Icons.add),
+        label: const Text('Agregar'),
+      ),
+    );
+  }
 
-                    // ── Tabla ─────────────────────────────────────────────
-                    Expanded(
-                      child: _filtradas.isEmpty
-                          ? _emptyWidget()
-                          : SingleChildScrollView(
-                              scrollDirection: Axis.vertical,
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: DataTable(
-                                  headingRowColor: WidgetStateProperty.all(
-                                    Colors.indigo.shade700,
-                                  ),
-                                  headingTextStyle: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  dataRowMinHeight: 52,
-                                  dataRowMaxHeight: 60,
-                                  columnSpacing: 20,
-                                  columns: const [
-                                    DataColumn(label: Text('#')),
-                                    DataColumn(label: Text('Estudiante')),
-                                    DataColumn(label: Text('Materia')),
-                                    DataColumn(
-                                      label: Text('Parcial 1'),
-                                      numeric: true,
-                                    ),
-                                    DataColumn(
-                                      label: Text('Parcial 2'),
-                                      numeric: true,
-                                    ),
-                                    DataColumn(
-                                      label: Text('Nota Final'),
-                                      numeric: true,
-                                    ),
-                                    DataColumn(
-                                      label: Text('Semestre'),
-                                      numeric: true,
-                                    ),
-                                    DataColumn(label: Text('Estado')),
-                                    DataColumn(label: Text('Acciones')),
-                                  ],
-                                  rows: _filtradas.asMap().entries.map((entry) {
-                                    final i = entry.key;
-                                    final c = entry.value;
-                                    final colorNota = _colorNota(c.notaFinal);
-                                    return DataRow(
-                                      color: WidgetStateProperty.resolveWith(
-                                        (states) => i.isEven
-                                            ? Colors.grey.shade50
-                                            : Colors.white,
-                                      ),
-                                      cells: [
-                                        DataCell(
-                                          Text(
-                                            '${i + 1}',
-                                            style: TextStyle(
-                                              color: Colors.grey.shade500,
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                        ),
-                                        DataCell(
-                                          Row(
-                                            children: [
-                                              CircleAvatar(
-                                                radius: 14,
-                                                backgroundColor:
-                                                    Colors.indigo.shade100,
-                                                child: Text(
-                                                  _nombreEst(c.estudianteId)
-                                                          .isNotEmpty
-                                                      ? _nombreEst(
-                                                          c.estudianteId,
-                                                        )[0].toUpperCase()
-                                                      : '?',
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.indigo.shade700,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              SizedBox(
-                                                width: 140,
-                                                child: Text(
-                                                  _nombreEst(c.estudianteId),
-                                                  overflow: TextOverflow.ellipsis,
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.w500,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        DataCell(
-                                          SizedBox(
-                                            width: 130,
-                                            child: Text(
-                                              _nombreMat(c.materiaId),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                        ),
-                                        DataCell(
-                                          Text(
-                                            c.notaParcial1?.toStringAsFixed(1) ??
-                                                '—',
-                                            style: TextStyle(
-                                              color: _colorNota(c.notaParcial1),
-                                            ),
-                                          ),
-                                        ),
-                                        DataCell(
-                                          Text(
-                                            c.notaParcial2?.toStringAsFixed(1) ??
-                                                '—',
-                                            style: TextStyle(
-                                              color: _colorNota(c.notaParcial2),
-                                            ),
-                                          ),
-                                        ),
-                                        DataCell(
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 4,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: colorNota.withValues(
-                                                alpha: 0.12,
-                                              ),
-                                              borderRadius: BorderRadius.circular(
-                                                20,
-                                              ),
-                                              border: Border.all(
-                                                color: colorNota.withValues(
-                                                  alpha: 0.4,
-                                                ),
-                                              ),
-                                            ),
-                                            child: Text(
-                                              c.notaFinal?.toStringAsFixed(2) ??
-                                                  '—',
-                                              style: TextStyle(
-                                                color: colorNota,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 13,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        DataCell(Text('${c.semestre ?? '—'}')),
-                                        DataCell(_estadoBadge(c.estado)),
-                                        DataCell(
-                                          IconButton(
-                                            icon: Icon(
-                                              Icons.edit_outlined,
-                                              color: Colors.indigo.shade600,
-                                              size: 20,
-                                            ),
-                                            tooltip: 'Editar',
-                                            onPressed: () =>
-                                                _abrirFormulario(cal: c),
-                                          ),
-                                        ),
-                                      ],
-                                    );
-                                  }).toList(),
-                                ),
-                              ),
-                            ),
-                    ),
-                  ],
+  Widget _calCard(Calificacion c) {
+    final color = _colorNota(c.notaFinal);
+    final numP = c.numParciales;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // Header
+          Row(children: [
+            Container(
+              width: 50, height: 50,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+                border: Border.all(color: color, width: 2),
+              ),
+              child: Center(
+                child: Text(
+                  c.notaFinal?.toStringAsFixed(1) ?? '-',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, color: color, fontSize: 15),
                 ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(c.estudianteNombre ?? _nombreEst(c.estudianteId),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                Text(c.materiaNombre ?? _nombreMat(c.materiaId),
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+              ]),
+            ),
+            _estadoBadge(c.estado),
+          ]),
+          const SizedBox(height: 10),
+
+          // Parciales
+          Wrap(spacing: 8, runSpacing: 6, children: [
+            if (c.notaParcial1 != null)
+              _notaChip('P1', c.notaParcial1!),
+            if (numP >= 2 && c.notaParcial2 != null)
+              _notaChip('P2', c.notaParcial2!),
+            if (numP >= 3 && c.notaParcial3 != null)
+              _notaChip('P3', c.notaParcial3!),
+            if (c.semestre != null)
+              _infoChip('Sem. ${c.semestre}', Colors.purple),
+          ]),
+
+          // Observaciones
+          if (c.observaciones != null && c.observaciones!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.amber.shade200),
+              ),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Icon(Icons.comment, size: 14, color: Colors.amber.shade700),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(c.observaciones!,
+                      style: TextStyle(
+                          fontSize: 12, color: Colors.amber.shade900)),
+                ),
+              ]),
+            ),
+          ],
+
+          const SizedBox(height: 10),
+          // Acciones
+          Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+            // Generar recomendación automática
+            if (c.estado == 'aprobado' || c.estado == 'reprobado')
+              TextButton.icon(
+                onPressed: () => _generarRecomendacion(c),
+                icon: Icon(Icons.lightbulb, size: 16, color: Colors.amber.shade700),
+                label: Text('Generar Rec.',
+                    style: TextStyle(fontSize: 12, color: Colors.amber.shade700)),
+              ),
+            IconButton(
+              icon: const Icon(Icons.edit, size: 18),
+              onPressed: () => _showForm(c),
+              tooltip: 'Editar',
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete, size: 18),
+              onPressed: () => _confirmDelete(c),
+              tooltip: 'Eliminar',
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              color: Colors.red.shade400,
+            ),
+          ]),
+        ]),
+      ),
+    );
+  }
+
+  Widget _notaChip(String label, double nota) {
+    final color = nota >= 8
+        ? Colors.green
+        : nota >= 6
+            ? Colors.orange
+            : Colors.red;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Text('$label: ${nota.toStringAsFixed(1)}',
+          style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color.shade700)),
+    );
+  }
+
+  Widget _infoChip(String text, MaterialColor color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(text,
+          style: TextStyle(fontSize: 11, color: color.shade700, fontWeight: FontWeight.w500)),
     );
   }
 
   Widget _estadoBadge(String estado) {
-    Color c;
-    switch (estado) {
-      case 'aprobado':
-        c = Colors.green;
-        break;
-      case 'reprobado':
-        c = Colors.red;
-        break;
-      default:
-        c = Colors.orange;
-    }
+    final color = estado == 'aprobado'
+        ? Colors.green
+        : estado == 'reprobado'
+            ? Colors.red
+            : Colors.orange;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: c.withValues(alpha: 0.4)),
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Text(
-        _estadoLabel(estado),
-        style: TextStyle(color: c, fontSize: 11, fontWeight: FontWeight.bold),
+        estado == 'aprobado'
+            ? '✅ Aprobado'
+            : estado == 'reprobado'
+                ? '❌ Reprobado'
+                : '⏳ En curso',
+        style: TextStyle(
+            fontSize: 10, color: color, fontWeight: FontWeight.bold),
       ),
     );
   }
-
-  Widget _errorWidget() => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.wifi_off, size: 60, color: Colors.red.shade300),
-            const SizedBox(height: 12),
-            const Text('No se pudo cargar calificaciones'),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _load,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Reintentar'),
-            ),
-          ],
-        ),
-      );
-
-  Widget _emptyWidget() => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.grade_outlined, size: 64, color: Colors.grey.shade300),
-            const SizedBox(height: 12),
-            Text(
-              _busqueda.isEmpty
-                  ? 'No hay calificaciones registradas'
-                  : 'No se encontraron resultados para "$_busqueda"',
-              style: TextStyle(color: Colors.grey.shade500),
-            ),
-            if (_busqueda.isEmpty) ...[
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: () => _abrirFormulario(),
-                icon: const Icon(Icons.add),
-                label: const Text('Agregar primera calificación'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.indigo.shade700,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            ],
-          ],
-        ),
-      );
 }
