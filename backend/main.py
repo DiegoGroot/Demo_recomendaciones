@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import (
     estudiantes, materias, calificaciones,
-    carreras, recomendaciones, maestros, auth, inscripcion, evaluaciones)
+    carreras, recomendaciones, auth, inscripcion, evaluaciones)
 
 app = FastAPI(title="SIRA API", version="2.0.0", redirect_slashes=False)
 
@@ -20,7 +20,6 @@ app.include_router(auth.router, prefix="/api/auth", tags=["Autenticación"])
 
 # Endpoints de recursos principales
 app.include_router(estudiantes.router,     prefix="/api/estudiantes",    tags=["Estudiantes"])
-app.include_router(maestros.router,        prefix="/api/maestros",       tags=["Maestros"])
 app.include_router(materias.router,        prefix="/api/materias",       tags=["Materias"])
 app.include_router(calificaciones.router,  prefix="/api/calificaciones", tags=["Calificaciones"])
 app.include_router(inscripcion.router,     prefix="/api/inscripciones",  tags=["Inscripciones"])

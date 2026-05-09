@@ -7,6 +7,7 @@ import 'screens/estudiantes_screen.dart';
 import 'screens/calificaciones_screen.dart';
 import 'screens/recomendaciones_screen.dart';
 import 'screens/materias_screen.dart';
+import 'screens/reportes_screen.dart';
 import 'services/auth_service.dart';
 
 void main() {
@@ -78,6 +79,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
     const MateriasScreen(),
     const CalificacionesScreen(),
     const RecomendacionesListScreen(),
+    const ReportesScreen(),
   ];
 
   @override
@@ -96,6 +98,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
           NavigationDestination(icon: Icon(Icons.book), label: 'Materias'),
           NavigationDestination(icon: Icon(Icons.grade), label: 'Calific.'),
           NavigationDestination(icon: Icon(Icons.lightbulb), label: 'Recomend.'),
+          NavigationDestination(icon: Icon(Icons.assessment), label: 'Reportes'),
         ],
       ),
     );

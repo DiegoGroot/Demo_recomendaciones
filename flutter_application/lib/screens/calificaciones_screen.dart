@@ -496,6 +496,7 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                   ),
                 ]),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'fab_calificaciones',
         onPressed: () => _showForm(),
         backgroundColor: Colors.indigo.shade700,
         icon: const Icon(Icons.add),

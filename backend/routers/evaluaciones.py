@@ -54,7 +54,8 @@ class IniciarEvaluacionCreate(BaseModel):
 
 
 class RespuestaEstudianteCreate(BaseModel):
-    evaluacion_estudiante_id: int
+    # FIX: evaluacion_estudiante_id es opcional — el backend lo resuelve internamente
+    evaluacion_estudiante_id: Optional[int] = None
     pregunta_id: int
     texto_respuesta: Optional[str] = None
     opcion_id: Optional[int] = None
@@ -66,7 +67,9 @@ class SubmitEvaluacionCreate(BaseModel):
     respuestas: List[RespuestaEstudianteCreate]
 
 
-# =============== EVALUACIONES ===============
+# =============================================================================
+# EVALUACIONES
+# =============================================================================
 
 @router.get("")
 def listar_evaluaciones(
@@ -86,22 +89,15 @@ def listar_evaluaciones(
             WHERE 1=1
         """
         params = []
-
         if recomendacion_id:
             query += " AND e.recomendacion_id = %s"
             params.append(recomendacion_id)
-
         if estado:
             query += " AND e.estado = %s"
             params.append(estado)
-
         query += " ORDER BY e.creado_en DESC"
 
-        if params:
-            cursor.execute(query, params)
-        else:
-            cursor.execute(query)
-
+        cursor.execute(query, params) if params else cursor.execute(query)
         result = cursor.fetchall()
         cursor.close()
         return result
@@ -110,34 +106,54 @@ def listar_evaluaciones(
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-# ─── GET evaluaciones pendientes de un estudiante ───────────────────────────
+# ── GET evaluaciones pendientes de un estudiante ──────────────────────────────
 @router.get("/estudiante/{estudiante_id}")
 def evaluaciones_por_estudiante(estudiante_id: int, db=Depends(get_db)):
-    """
-    Devuelve todas las evaluaciones activas asociadas a recomendaciones
-    del estudiante que aún NO ha respondido.
-    """
     cursor = db.cursor(dictionary=True)
     try:
+        # Intento 1: buscar por seguimiento_recomendacion (flujo completo)
         cursor.execute("""
             SELECT e.evaluacion_id, e.recomendacion_id, e.titulo, e.descripcion,
                    e.estado, e.creado_en,
                    r.tipo_recomendacion, r.prioridad,
                    (
-                     SELECT COUNT(*) FROM sira.evaluacion_estudiante ee
-                     WHERE ee.evaluacion_id = e.evaluacion_id
-                       AND ee.estudiante_id = %s
-                       AND ee.completada = 1
+                     SELECT COUNT(*) FROM sira.evaluacion_estudiante ee2
+                     WHERE ee2.evaluacion_id = e.evaluacion_id
+                       AND ee2.estado = 'finalizada'
+                       AND ee2.seguimiento_id = sr.seguimiento_id
                    ) as ya_respondida
             FROM sira.evaluacion e
             JOIN sira.recomendacion r ON e.recomendacion_id = r.recomendacion_id
-            WHERE r.estudiante_id = %s
+            JOIN sira.seguimiento_recomendacion sr ON r.recomendacion_id = sr.recomendacion_id
+            WHERE sr.estudiante_id = %s
               AND e.estado = 'activa'
             ORDER BY e.creado_en DESC
-        """, (estudiante_id, estudiante_id))
+        """, (estudiante_id,))
         result = cursor.fetchall()
+
+        # Intento 2 (fallback): buscar directamente por recomendacion.estudiante_id
+        if not result:
+            cursor.execute("""
+                SELECT e.evaluacion_id, e.recomendacion_id, e.titulo, e.descripcion,
+                       e.estado, e.creado_en,
+                       r.tipo_recomendacion, r.prioridad,
+                       (
+                         SELECT COUNT(*) FROM sira.evaluacion_estudiante ee2
+                         JOIN sira.seguimiento_recomendacion sr2
+                           ON ee2.seguimiento_id = sr2.seguimiento_id
+                         WHERE ee2.evaluacion_id = e.evaluacion_id
+                           AND ee2.estado = 'finalizada'
+                           AND sr2.estudiante_id = %s
+                       ) as ya_respondida
+                FROM sira.evaluacion e
+                JOIN sira.recomendacion r ON e.recomendacion_id = r.recomendacion_id
+                WHERE r.estudiante_id = %s
+                  AND e.estado = 'activa'
+                ORDER BY e.creado_en DESC
+            """, (estudiante_id, estudiante_id))
+            result = cursor.fetchall()
+
         cursor.close()
-        # Convertir bit/int a bool
         for row in result:
             row['ya_respondida'] = bool(row.get('ya_respondida', 0))
         return result if result else []
@@ -146,107 +162,141 @@ def evaluaciones_por_estudiante(estudiante_id: int, db=Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-# [ruta /{evaluacion_id} movida al final]
-
-
-@router.post("", status_code=201)
-def crear_evaluacion(data: EvaluacionCreate, db=Depends(get_db)):
+# ── GET resultados de evaluaciones completadas por estudiante ─────────────────
+@router.get("/resultados/estudiante/{estudiante_id}")
+def resultados_por_estudiante(estudiante_id: int, db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT recomendacion_id FROM sira.recomendacion WHERE recomendacion_id = %s",
-                      (data.recomendacion_id,))
-        if not cursor.fetchone():
-            cursor.close()
-            raise HTTPException(status_code=404, detail="Recomendación no encontrada")
-
         cursor.execute("""
-            INSERT INTO sira.evaluacion (recomendacion_id, titulo, descripcion)
-            VALUES (%s, %s, %s)
-        """, (data.recomendacion_id, data.titulo, data.descripcion))
-        db.commit()
-        new_id = cursor.lastrowid
-
-        cursor.execute("""
-            SELECT evaluacion_id, recomendacion_id, titulo, descripcion, estado, creado_en
-            FROM sira.evaluacion WHERE evaluacion_id = %s
-        """, (new_id,))
-        evaluacion = cursor.fetchone()
+            SELECT
+                ee.evaluacion_estudiante_id,
+                ee.evaluacion_id,
+                ie.respuestas_correctas,
+                ee.evaluacion_aprobada,
+                ee.fecha_inicio,
+                ee.fecha_fin,
+                ev.titulo,
+                ev.descripcion,
+                ev.recomendacion_id,
+                r.tipo_recomendacion,
+                r.descripcion   AS recom_descripcion,
+                r.prioridad,
+                m.nombre        AS materia_nombre,
+                CASE
+                    WHEN ee.evaluacion_aprobada THEN 'aprobada'
+                    WHEN ee.estado = 'finalizada' THEN 'finalizada'
+                    ELSE ee.estado
+                END AS nivel_progreso
+            FROM sira.evaluacion_estudiante ee
+            JOIN sira.seguimiento_recomendacion sr ON ee.seguimiento_id = sr.seguimiento_id
+            JOIN sira.evaluacion ev    ON ee.evaluacion_id    = ev.evaluacion_id
+            JOIN sira.recomendacion r  ON ev.recomendacion_id = r.recomendacion_id
+            LEFT JOIN sira.intento_evaluacion ie ON ee.evaluacion_estudiante_id = ie.evaluacion_estudiante_id
+            LEFT JOIN sira.materia m   ON r.materia_id        = m.materia_id
+            WHERE sr.estudiante_id = %s AND ee.estado = 'finalizada'
+            ORDER BY ee.fecha_fin DESC
+        """, (estudiante_id,))
+        result = cursor.fetchall()
         cursor.close()
-        return evaluacion
-    except HTTPException:
-        cursor.close()
-        raise
+        return result if result else []
     except Exception as e:
-        db.rollback()
         cursor.close()
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error resultados: {str(e)}")
 
 
-@router.put("/{evaluacion_id}")
-def actualizar_evaluacion(evaluacion_id: int, data: EvaluacionUpdate, db=Depends(get_db)):
+# ── GET reporte general para el admin ─────────────────────────────────────────
+@router.get("/reportes/admin")
+def reporte_admin(db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT evaluacion_id FROM sira.evaluacion WHERE evaluacion_id = %s", (evaluacion_id,))
-        if not cursor.fetchone():
-            cursor.close()
-            raise HTTPException(status_code=404, detail="Evaluación no encontrada")
-
-        campos = {k: v for k, v in data.dict().items() if v is not None}
-        if not campos:
-            cursor.close()
-            raise HTTPException(status_code=400, detail="Sin datos para actualizar")
-
-        set_clause = ", ".join([f"{k} = %s" for k in campos])
-        cursor.execute(
-            f"UPDATE sira.evaluacion SET {set_clause} WHERE evaluacion_id = %s",
-            (*campos.values(), evaluacion_id)
-        )
-        db.commit()
-
         cursor.execute("""
-            SELECT evaluacion_id, recomendacion_id, titulo, descripcion, estado, creado_en
-            FROM sira.evaluacion WHERE evaluacion_id = %s
-        """, (evaluacion_id,))
-        evaluacion = cursor.fetchone()
+            SELECT
+                ee.evaluacion_estudiante_id,
+                ee.evaluacion_id,
+                ie.respuestas_correctas,
+                ee.fecha_fin,
+                ee.fecha_inicio,
+                ev.titulo,
+                ev.descripcion,
+                r.recomendacion_id,
+                r.tipo_recomendacion,
+                r.descripcion       AS recom_descripcion,
+                r.prioridad,
+                sr.recomendacion_visualizada,
+                est.nombre          AS estudiante_nombre,
+                est.estudiante_id,
+                m.nombre            AS materia_nombre,
+                c.nombre            AS carrera_nombre,
+                CASE
+                    WHEN ee.evaluacion_aprobada THEN 'aprobada'
+                    WHEN ee.estado = 'finalizada' THEN 'finalizada'
+                    ELSE ee.estado
+                END AS nivel_progreso
+            FROM sira.evaluacion_estudiante ee
+            JOIN sira.seguimiento_recomendacion sr ON ee.seguimiento_id = sr.seguimiento_id
+            JOIN sira.evaluacion ev    ON ee.evaluacion_id    = ev.evaluacion_id
+            JOIN sira.recomendacion r  ON ev.recomendacion_id = r.recomendacion_id
+            JOIN sira.estudiante est   ON sr.estudiante_id    = est.estudiante_id
+            LEFT JOIN sira.intento_evaluacion ie ON ee.evaluacion_estudiante_id = ie.evaluacion_estudiante_id
+            LEFT JOIN sira.materia m   ON r.materia_id        = m.materia_id
+            LEFT JOIN sira.carrera c   ON est.carrera_id      = c.carrera_id
+            WHERE ee.estado = 'finalizada'
+            ORDER BY ee.fecha_fin DESC
+        """)
+        result = cursor.fetchall()
         cursor.close()
-        return evaluacion
-    except HTTPException:
-        cursor.close()
-        raise
+        return result if result else []
     except Exception as e:
-        db.rollback()
         cursor.close()
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error reporte admin: {str(e)}")
 
 
-@router.delete("/{evaluacion_id}")
-def eliminar_evaluacion(evaluacion_id: int, db=Depends(get_db)):
-    cursor = db.cursor()
+# ── GET reporte de un estudiante específico ────────────────────────────────────
+@router.get("/reportes/estudiante/{estudiante_id}")
+def reporte_estudiante(estudiante_id: int, db=Depends(get_db)):
+    cursor = db.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT evaluacion_id FROM sira.evaluacion WHERE evaluacion_id = %s", (evaluacion_id,))
-        if not cursor.fetchone():
-            cursor.close()
-            raise HTTPException(status_code=404, detail="Evaluación no encontrada")
-
-        cursor.execute("DELETE FROM sira.evaluacion WHERE evaluacion_id = %s", (evaluacion_id,))
-        db.commit()
+        cursor.execute("""
+            SELECT
+                ee.evaluacion_estudiante_id,
+                ee.evaluacion_id,
+                ie.respuestas_correctas,
+                ee.fecha_fin,
+                ev.titulo,
+                r.tipo_recomendacion,
+                r.descripcion   AS recom_descripcion,
+                sr.recomendacion_visualizada,
+                m.nombre        AS materia_nombre,
+                CASE
+                    WHEN ee.evaluacion_aprobada THEN 'aprobada'
+                    WHEN ee.estado = 'finalizada' THEN 'finalizada'
+                    ELSE ee.estado
+                END AS nivel_progreso
+            FROM sira.evaluacion_estudiante ee
+            JOIN sira.seguimiento_recomendacion sr ON ee.seguimiento_id = sr.seguimiento_id
+            JOIN sira.evaluacion ev    ON ee.evaluacion_id    = ev.evaluacion_id
+            JOIN sira.recomendacion r  ON ev.recomendacion_id = r.recomendacion_id
+            LEFT JOIN sira.intento_evaluacion ie ON ee.evaluacion_estudiante_id = ie.evaluacion_estudiante_id
+            LEFT JOIN sira.materia m   ON r.materia_id        = m.materia_id
+            WHERE sr.estudiante_id = %s AND ee.estado = 'finalizada'
+            ORDER BY ee.fecha_fin DESC
+        """, (estudiante_id,))
+        result = cursor.fetchall()
         cursor.close()
-        return {"message": "Evaluación eliminada"}
-    except HTTPException:
-        raise
+        return result if result else []
     except Exception as e:
-        db.rollback()
         cursor.close()
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error reporte estudiante: {str(e)}")
 
 
-# =============== PREGUNTAS ===============
+# =============================================================================
+# PREGUNTAS
+# =============================================================================
 
 @router.get("/preguntas/evaluacion/{evaluacion_id}")
 def preguntas_por_evaluacion(evaluacion_id: int, db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
     try:
-        # Preguntas
         cursor.execute("""
             SELECT p.pregunta_id, p.evaluacion_id, p.texto_pregunta,
                    p.tipo_pregunta, p.orden, p.requerida, p.creado_en
@@ -256,7 +306,6 @@ def preguntas_por_evaluacion(evaluacion_id: int, db=Depends(get_db)):
         """, (evaluacion_id,))
         preguntas = cursor.fetchall()
 
-        # Para cada pregunta con opciones, cargarlas
         for p in preguntas:
             if p['tipo_pregunta'] in ('opcion_multiple', 'si_no'):
                 cursor.execute("""
@@ -272,15 +321,17 @@ def preguntas_por_evaluacion(evaluacion_id: int, db=Depends(get_db)):
         return preguntas if preguntas else []
     except Exception as e:
         cursor.close()
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error preguntas: {str(e)}")
 
 
 @router.post("/preguntas", status_code=201)
 def crear_pregunta(data: PreguntaCreate, db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT evaluacion_id FROM sira.evaluacion WHERE evaluacion_id = %s",
-                      (data.evaluacion_id,))
+        cursor.execute(
+            "SELECT evaluacion_id FROM sira.evaluacion WHERE evaluacion_id = %s",
+            (data.evaluacion_id,)
+        )
         if not cursor.fetchone():
             cursor.close()
             raise HTTPException(status_code=404, detail="Evaluación no encontrada")
@@ -288,12 +339,14 @@ def crear_pregunta(data: PreguntaCreate, db=Depends(get_db)):
         cursor.execute("""
             INSERT INTO sira.pregunta (evaluacion_id, texto_pregunta, tipo_pregunta, orden, requerida)
             VALUES (%s, %s, %s, %s, %s)
-        """, (data.evaluacion_id, data.texto_pregunta, data.tipo_pregunta, data.orden, data.requerida))
+        """, (data.evaluacion_id, data.texto_pregunta, data.tipo_pregunta,
+              data.orden, data.requerida))
         db.commit()
         new_id = cursor.lastrowid
 
         cursor.execute("""
-            SELECT pregunta_id, evaluacion_id, texto_pregunta, tipo_pregunta, orden, requerida, creado_en
+            SELECT pregunta_id, evaluacion_id, texto_pregunta, tipo_pregunta,
+                   orden, requerida, creado_en
             FROM sira.pregunta WHERE pregunta_id = %s
         """, (new_id,))
         pregunta = cursor.fetchone()
@@ -312,7 +365,10 @@ def crear_pregunta(data: PreguntaCreate, db=Depends(get_db)):
 def actualizar_pregunta(pregunta_id: int, data: PreguntaUpdate, db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT pregunta_id FROM sira.pregunta WHERE pregunta_id = %s", (pregunta_id,))
+        cursor.execute(
+            "SELECT pregunta_id FROM sira.pregunta WHERE pregunta_id = %s",
+            (pregunta_id,)
+        )
         if not cursor.fetchone():
             cursor.close()
             raise HTTPException(status_code=404, detail="Pregunta no encontrada")
@@ -330,7 +386,8 @@ def actualizar_pregunta(pregunta_id: int, data: PreguntaUpdate, db=Depends(get_d
         db.commit()
 
         cursor.execute("""
-            SELECT pregunta_id, evaluacion_id, texto_pregunta, tipo_pregunta, orden, requerida, creado_en
+            SELECT pregunta_id, evaluacion_id, texto_pregunta, tipo_pregunta,
+                   orden, requerida, creado_en
             FROM sira.pregunta WHERE pregunta_id = %s
         """, (pregunta_id,))
         pregunta = cursor.fetchone()
@@ -349,12 +406,17 @@ def actualizar_pregunta(pregunta_id: int, data: PreguntaUpdate, db=Depends(get_d
 def eliminar_pregunta(pregunta_id: int, db=Depends(get_db)):
     cursor = db.cursor()
     try:
-        cursor.execute("SELECT pregunta_id FROM sira.pregunta WHERE pregunta_id = %s", (pregunta_id,))
+        cursor.execute(
+            "SELECT pregunta_id FROM sira.pregunta WHERE pregunta_id = %s",
+            (pregunta_id,)
+        )
         if not cursor.fetchone():
             cursor.close()
             raise HTTPException(status_code=404, detail="Pregunta no encontrada")
 
-        cursor.execute("DELETE FROM sira.pregunta WHERE pregunta_id = %s", (pregunta_id,))
+        cursor.execute(
+            "DELETE FROM sira.pregunta WHERE pregunta_id = %s", (pregunta_id,)
+        )
         db.commit()
         cursor.close()
         return {"message": "Pregunta eliminada"}
@@ -366,7 +428,9 @@ def eliminar_pregunta(pregunta_id: int, db=Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-# =============== OPCIONES DE RESPUESTA ===============
+# =============================================================================
+# OPCIONES DE RESPUESTA
+# =============================================================================
 
 @router.get("/opciones/pregunta/{pregunta_id}")
 def opciones_por_pregunta(pregunta_id: int, db=Depends(get_db)):
@@ -413,8 +477,10 @@ def obtener_opcion(opcion_id: int, db=Depends(get_db)):
 def crear_opcion(data: OpcionRespuestaCreate, db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT pregunta_id FROM sira.pregunta WHERE pregunta_id = %s",
-                      (data.pregunta_id,))
+        cursor.execute(
+            "SELECT pregunta_id FROM sira.pregunta WHERE pregunta_id = %s",
+            (data.pregunta_id,)
+        )
         if not cursor.fetchone():
             cursor.close()
             raise HTTPException(status_code=404, detail="Pregunta no encontrada")
@@ -446,7 +512,10 @@ def crear_opcion(data: OpcionRespuestaCreate, db=Depends(get_db)):
 def actualizar_opcion(opcion_id: int, data: OpcionRespuestaUpdate, db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT opcion_id FROM sira.opcion_respuesta WHERE opcion_id = %s", (opcion_id,))
+        cursor.execute(
+            "SELECT opcion_id FROM sira.opcion_respuesta WHERE opcion_id = %s",
+            (opcion_id,)
+        )
         if not cursor.fetchone():
             cursor.close()
             raise HTTPException(status_code=404, detail="Opción no encontrada")
@@ -483,12 +552,17 @@ def actualizar_opcion(opcion_id: int, data: OpcionRespuestaUpdate, db=Depends(ge
 def eliminar_opcion(opcion_id: int, db=Depends(get_db)):
     cursor = db.cursor()
     try:
-        cursor.execute("SELECT opcion_id FROM sira.opcion_respuesta WHERE opcion_id = %s", (opcion_id,))
+        cursor.execute(
+            "SELECT opcion_id FROM sira.opcion_respuesta WHERE opcion_id = %s",
+            (opcion_id,)
+        )
         if not cursor.fetchone():
             cursor.close()
             raise HTTPException(status_code=404, detail="Opción no encontrada")
 
-        cursor.execute("DELETE FROM sira.opcion_respuesta WHERE opcion_id = %s", (opcion_id,))
+        cursor.execute(
+            "DELETE FROM sira.opcion_respuesta WHERE opcion_id = %s", (opcion_id,)
+        )
         db.commit()
         cursor.close()
         return {"message": "Opción eliminada"}
@@ -500,41 +574,55 @@ def eliminar_opcion(opcion_id: int, db=Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-# =============== RESPUESTAS DEL ESTUDIANTE ===============
+# =============================================================================
+# RESPUESTAS DEL ESTUDIANTE
+# =============================================================================
 
 @router.post("/iniciar", status_code=201)
 def iniciar_evaluacion(data: IniciarEvaluacionCreate, db=Depends(get_db)):
-    """
-    Crea un registro evaluacion_estudiante para rastrear el intento.
-    Si ya existe uno incompleto, lo devuelve.
-    """
     cursor = db.cursor(dictionary=True)
     try:
-        # Verificar si ya existe uno en curso
         cursor.execute("""
-            SELECT ee_id, evaluacion_id, estudiante_id, completada, iniciado_en
-            FROM sira.evaluacion_estudiante
-            WHERE evaluacion_id = %s AND estudiante_id = %s AND completada = 0
+            SELECT sr.seguimiento_id FROM sira.seguimiento_recomendacion sr
+            JOIN sira.evaluacion e ON e.recomendacion_id = sr.recomendacion_id
+            WHERE e.evaluacion_id = %s AND sr.estudiante_id = %s
+            LIMIT 1
         """, (data.evaluacion_id, data.estudiante_id))
+        seguimiento = cursor.fetchone()
+        if not seguimiento:
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Seguimiento no encontrado")
+
+        seguimiento_id = seguimiento['seguimiento_id']
+
+        cursor.execute("""
+            SELECT evaluacion_estudiante_id, evaluacion_id, estado, fecha_inicio
+            FROM sira.evaluacion_estudiante
+            WHERE evaluacion_id = %s AND seguimiento_id = %s AND estado != 'finalizada'
+        """, (data.evaluacion_id, seguimiento_id))
         existente = cursor.fetchone()
         if existente:
             cursor.close()
             return existente
 
         cursor.execute("""
-            INSERT INTO sira.evaluacion_estudiante (evaluacion_id, estudiante_id, completada)
-            VALUES (%s, %s, 0)
-        """, (data.evaluacion_id, data.estudiante_id))
+            INSERT INTO sira.evaluacion_estudiante (seguimiento_id, evaluacion_id, estado)
+            VALUES (%s, %s, 'en_progreso')
+        """, (seguimiento_id, data.evaluacion_id))
         db.commit()
         new_id = cursor.lastrowid
 
         cursor.execute("""
-            SELECT ee_id, evaluacion_id, estudiante_id, completada, iniciado_en
-            FROM sira.evaluacion_estudiante WHERE ee_id = %s
+            SELECT evaluacion_estudiante_id, evaluacion_id, estado, fecha_inicio
+            FROM sira.evaluacion_estudiante WHERE evaluacion_estudiante_id = %s
         """, (new_id,))
         result = cursor.fetchone()
         cursor.close()
         return result
+    except HTTPException:
+        db.rollback()
+        cursor.close()
+        raise
     except Exception as e:
         db.rollback()
         cursor.close()
@@ -543,31 +631,68 @@ def iniciar_evaluacion(data: IniciarEvaluacionCreate, db=Depends(get_db)):
 
 @router.post("/respuestas/submit", status_code=201)
 def submit_respuestas(data: SubmitEvaluacionCreate, db=Depends(get_db)):
-    """
-    Guarda todas las respuestas de un estudiante y marca la evaluación como completada.
-    """
     cursor = db.cursor(dictionary=True)
     try:
-        # Buscar o crear el registro evaluacion_estudiante
+        # ── Paso 1: obtener seguimiento_id ────────────────────────────────────
         cursor.execute("""
-            SELECT ee_id FROM sira.evaluacion_estudiante
-            WHERE evaluacion_id = %s AND estudiante_id = %s
+            SELECT sr.seguimiento_id FROM sira.seguimiento_recomendacion sr
+            JOIN sira.evaluacion e ON e.recomendacion_id = sr.recomendacion_id
+            WHERE e.evaluacion_id = %s AND sr.estudiante_id = %s
+            LIMIT 1
         """, (data.evaluacion_id, data.estudiante_id))
+        seguimiento = cursor.fetchone()
+
+        if not seguimiento:
+            cursor.execute("""
+                SELECT e.recomendacion_id, r.estudiante_id as rec_estudiante_id
+                FROM sira.evaluacion e
+                JOIN sira.recomendacion r ON e.recomendacion_id = r.recomendacion_id
+                WHERE e.evaluacion_id = %s
+            """, (data.evaluacion_id,))
+            eval_info = cursor.fetchone()
+
+            if not eval_info:
+                cursor.close()
+                raise HTTPException(status_code=404, detail="Evaluación no encontrada")
+
+            recomendacion_id = eval_info['recomendacion_id']
+
+            cursor.execute("""
+                INSERT INTO sira.seguimiento_recomendacion
+                    (recomendacion_id, estudiante_id, recomendacion_visualizada)
+                VALUES (%s, %s, 1)
+            """, (recomendacion_id, data.estudiante_id))
+            db.commit()
+            seguimiento_id = cursor.lastrowid
+        else:
+            seguimiento_id = seguimiento['seguimiento_id']
+
+        # ── Paso 2: obtener o crear evaluacion_estudiante ─────────────────────
+        cursor.execute("""
+            SELECT evaluacion_estudiante_id FROM sira.evaluacion_estudiante
+            WHERE evaluacion_id = %s AND seguimiento_id = %s
+        """, (data.evaluacion_id, seguimiento_id))
         ee = cursor.fetchone()
 
         if not ee:
             cursor.execute("""
-                INSERT INTO sira.evaluacion_estudiante (evaluacion_id, estudiante_id, completada)
-                VALUES (%s, %s, 0)
-            """, (data.evaluacion_id, data.estudiante_id))
+                INSERT INTO sira.evaluacion_estudiante (seguimiento_id, evaluacion_id, estado)
+                VALUES (%s, %s, 'en_progreso')
+            """, (seguimiento_id, data.evaluacion_id))
             db.commit()
             ee_id = cursor.lastrowid
         else:
-            ee_id = ee['ee_id']
+            ee_id = ee['evaluacion_estudiante_id']
 
-        # Insertar cada respuesta
+        # ── Paso 3: insertar respuestas ───────────────────────────────────────
         for resp in data.respuestas:
-            # Evitar duplicados: borrar respuesta previa si existe
+            # ======================================================================
+            # 🛑 ¡AQUÍ ESTÁ EL ORIGEN DE TU ERROR 500! 🛑
+            # Si en tu base de datos MySQL la tabla `respuesta_estudiante` 
+            # NO tiene la columna llamada `evaluacion_estudiante_id`, debes cambiar
+            # la palabra `evaluacion_estudiante_id` aquí abajo por el nombre real 
+            # (ej. `intento_id`, `evaluacion_id`, etc.) Si ya lo cambiaste en MySQL, déjalo así.
+            # ======================================================================
             cursor.execute("""
                 DELETE FROM sira.respuesta_estudiante
                 WHERE evaluacion_estudiante_id = %s AND pregunta_id = %s
@@ -579,7 +704,7 @@ def submit_respuestas(data: SubmitEvaluacionCreate, db=Depends(get_db)):
                 VALUES (%s, %s, %s, %s)
             """, (ee_id, resp.pregunta_id, resp.texto_respuesta, resp.opcion_id))
 
-        # Calcular calificación automática (preguntas con opcion correcta)
+        # ── Paso 4: contar respuestas correctas ───────────────────────────────
         cursor.execute("""
             SELECT COUNT(*) as total,
                    SUM(CASE WHEN o.es_correcta = 1 THEN 1 ELSE 0 END) as correctas
@@ -588,54 +713,78 @@ def submit_respuestas(data: SubmitEvaluacionCreate, db=Depends(get_db)):
             WHERE re.evaluacion_estudiante_id = %s
         """, (ee_id,))
         cal = cursor.fetchone()
-        calificacion = None
-        if cal and cal['total'] and cal['total'] > 0:
-            calificacion = round((cal['correctas'] / cal['total']) * 10, 2)
+        respuestas_correctas = cal['correctas'] if cal and cal['correctas'] else 0
+        total_respuestas = cal['total'] if cal and cal['total'] else 1
 
-        # Marcar como completada
+        # ── Paso 5: registrar intento ─────────────────────────────────────────
+        cursor.execute("""
+            INSERT INTO sira.intento_evaluacion (evaluacion_estudiante_id, respuestas_correctas, estado)
+            VALUES (%s, %s, 'aceptado')
+        """, (ee_id, respuestas_correctas))
+
+        # ── Paso 6: marcar como finalizada ───────────────────────────────────
+        aprobada = respuestas_correctas >= (total_respuestas // 2) if total_respuestas > 0 else False
         cursor.execute("""
             UPDATE sira.evaluacion_estudiante
-            SET completada = 1, calificacion = %s, completado_en = NOW()
-            WHERE ee_id = %s
-        """, (calificacion, ee_id))
+            SET estado = 'finalizada', evaluacion_aprobada = %s, fecha_fin = NOW()
+            WHERE evaluacion_estudiante_id = %s
+        """, (aprobada, ee_id))
         db.commit()
-
         cursor.close()
         return {
             "message": "Respuestas enviadas correctamente",
-            "ee_id": ee_id,
-            "calificacion": calificacion
+            "evaluacion_estudiante_id": ee_id,
+            "respuestas_correctas": respuestas_correctas
         }
+    except HTTPException:
+        db.rollback()
+        cursor.close()
+        raise
     except Exception as e:
         db.rollback()
         cursor.close()
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-@router.get("/resultados/estudiante/{estudiante_id}")
-def resultados_por_estudiante(estudiante_id: int, db=Depends(get_db)):
-    """
-    Devuelve los resultados de todas las evaluaciones completadas del estudiante.
-    """
+# =============================================================================
+# CRUD EVALUACIONES
+# =============================================================================
+
+@router.post("", status_code=201)
+def crear_evaluacion(data: EvaluacionCreate, db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
     try:
+        cursor.execute(
+            "SELECT recomendacion_id FROM sira.recomendacion WHERE recomendacion_id = %s",
+            (data.recomendacion_id,)
+        )
+        if not cursor.fetchone():
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Recomendación no encontrada")
+
         cursor.execute("""
-            SELECT ee.ee_id, ee.evaluacion_id, ee.calificacion,
-                   ee.completada, ee.iniciado_en, ee.completado_en,
-                   ev.titulo, ev.descripcion
-            FROM sira.evaluacion_estudiante ee
-            JOIN sira.evaluacion ev ON ee.evaluacion_id = ev.evaluacion_id
-            WHERE ee.estudiante_id = %s AND ee.completada = 1
-            ORDER BY ee.completado_en DESC
-        """, (estudiante_id,))
-        result = cursor.fetchall()
+            INSERT INTO sira.evaluacion (recomendacion_id, titulo, descripcion)
+            VALUES (%s, %s, %s)
+        """, (data.recomendacion_id, data.titulo, data.descripcion))
+        db.commit()
+        new_id = cursor.lastrowid
+
+        cursor.execute("""
+            SELECT evaluacion_id, recomendacion_id, titulo, descripcion, estado, creado_en
+            FROM sira.evaluacion WHERE evaluacion_id = %s
+        """, (new_id,))
+        evaluacion = cursor.fetchone()
         cursor.close()
-        return result if result else []
+        return evaluacion
+    except HTTPException:
+        cursor.close()
+        raise
     except Exception as e:
+        db.rollback()
         cursor.close()
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
-# ── Esta ruta debe ir AL FINAL para no capturar rutas específicas ─────────────
+
 @router.get("/{evaluacion_id}")
 def obtener_evaluacion(evaluacion_id: int, db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
@@ -658,82 +807,67 @@ def obtener_evaluacion(evaluacion_id: int, db=Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-# ── GET reporte general para el admin (todas las evaluaciones completadas) ────
-@router.get("/reportes/admin")
-def reporte_admin(db=Depends(get_db)):
-    """
-    Devuelve un reporte consolidado de todas las evaluaciones completadas,
-    con nombre del estudiante, materia, recomendación y calificación del quiz.
-    Usado en el Dashboard Admin > Tab Reportes.
-    """
+@router.put("/{evaluacion_id}")
+def actualizar_evaluacion(evaluacion_id: int, data: EvaluacionUpdate, db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
     try:
+        cursor.execute(
+            "SELECT evaluacion_id FROM sira.evaluacion WHERE evaluacion_id = %s",
+            (evaluacion_id,)
+        )
+        if not cursor.fetchone():
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Evaluación no encontrada")
+
+        campos = {k: v for k, v in data.dict().items() if v is not None}
+        if not campos:
+            cursor.close()
+            raise HTTPException(status_code=400, detail="Sin datos para actualizar")
+
+        set_clause = ", ".join([f"{k} = %s" for k in campos])
+        cursor.execute(
+            f"UPDATE sira.evaluacion SET {set_clause} WHERE evaluacion_id = %s",
+            (*campos.values(), evaluacion_id)
+        )
+        db.commit()
+
         cursor.execute("""
-            SELECT
-                ee.ee_id,
-                ee.calificacion,
-                ee.completado_en,
-                ee.iniciado_en,
-                ev.titulo,
-                ev.descripcion,
-                ev.evaluacion_id,
-                r.tipo_recomendacion,
-                r.descripcion   AS recom_descripcion,
-                r.prioridad,
-                est.nombre      AS estudiante_nombre,
-                est.estudiante_id,
-                m.nombre        AS materia_nombre
-            FROM sira.evaluacion_estudiante ee
-            JOIN sira.evaluacion ev    ON ee.evaluacion_id    = ev.evaluacion_id
-            JOIN sira.recomendacion r  ON ev.recomendacion_id = r.recomendacion_id
-            JOIN sira.estudiante est   ON ee.estudiante_id    = est.estudiante_id
-            LEFT JOIN sira.materia m   ON r.materia_id        = m.materia_id
-            WHERE ee.completada = 1
-            ORDER BY ee.completado_en DESC
-        """)
-        result = cursor.fetchall()
+            SELECT evaluacion_id, recomendacion_id, titulo, descripcion, estado, creado_en
+            FROM sira.evaluacion WHERE evaluacion_id = %s
+        """, (evaluacion_id,))
+        evaluacion = cursor.fetchone()
         cursor.close()
-        return result if result else []
+        return evaluacion
+    except HTTPException:
+        cursor.close()
+        raise
     except Exception as e:
+        db.rollback()
         cursor.close()
-        raise HTTPException(status_code=500, detail=f"Error reporte: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-# ── GET reporte de un estudiante específico (para el alumno) ──────────────────
-@router.get("/reportes/estudiante/{estudiante_id}")
-def reporte_estudiante(estudiante_id: int, db=Depends(get_db)):
-    """
-    Devuelve el historial de evaluaciones completadas de un estudiante,
-    con su calificación del quiz y el tipo de recomendación asociada.
-    """
-    cursor = db.cursor(dictionary=True)
+@router.delete("/{evaluacion_id}")
+def eliminar_evaluacion(evaluacion_id: int, db=Depends(get_db)):
+    cursor = db.cursor()
     try:
-        cursor.execute("""
-            SELECT
-                ee.ee_id,
-                ee.calificacion,
-                ee.completado_en,
-                ev.titulo,
-                ev.evaluacion_id,
-                r.tipo_recomendacion,
-                r.descripcion   AS recom_descripcion,
-                m.nombre        AS materia_nombre,
-                CASE
-                    WHEN ee.calificacion >= 8 THEN 'excelente'
-                    WHEN ee.calificacion >= 6 THEN 'satisfactorio'
-                    WHEN ee.calificacion IS NULL THEN 'sin_calificar'
-                    ELSE 'insuficiente'
-                END AS nivel_progreso
-            FROM sira.evaluacion_estudiante ee
-            JOIN sira.evaluacion ev    ON ee.evaluacion_id    = ev.evaluacion_id
-            JOIN sira.recomendacion r  ON ev.recomendacion_id = r.recomendacion_id
-            LEFT JOIN sira.materia m   ON r.materia_id        = m.materia_id
-            WHERE ee.estudiante_id = %s AND ee.completada = 1
-            ORDER BY ee.completado_en DESC
-        """, (estudiante_id,))
-        result = cursor.fetchall()
+        cursor.execute(
+            "SELECT evaluacion_id FROM sira.evaluacion WHERE evaluacion_id = %s",
+            (evaluacion_id,)
+        )
+        if not cursor.fetchone():
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Evaluación no encontrada")
+
+        cursor.execute(
+            "DELETE FROM sira.evaluacion WHERE evaluacion_id = %s", (evaluacion_id,)
+        )
+        db.commit()
         cursor.close()
-        return result if result else []
+        return {"message": "Evaluación eliminada"}
+    except HTTPException:
+        raise
     except Exception as e:
+        db.rollback()
         cursor.close()
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")

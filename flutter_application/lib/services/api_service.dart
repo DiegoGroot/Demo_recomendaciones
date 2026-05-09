@@ -93,6 +93,9 @@ class ApiService {
   static Future<void> deleteCarrera(int id) async =>
       await _delete('/carreras/$id');
 
+   static Future<Map<String, dynamic>> importarMapaCurricular(int carreraId, String urlPdf) async =>
+      await _post('/carreras/$carreraId/importar-mapa', {'url_pdf': urlPdf}) as Map<String, dynamic>;   
+
   // ==================== MATERIAS ====================
   static Future<List<Materia>> getMaterias() async {
     final data = await _get('/materias') as List<dynamic>;
@@ -110,6 +113,14 @@ class ApiService {
   static Future<List<Materia>> getMateriasByCarrera(int carreraId) async {
     final data = await _get('/materias?carrera_id=$carreraId') as List<dynamic>;
     return data.map((m) => Materia.fromJson(m as Map<String, dynamic>)).toList();
+  }
+
+  // ── NUEVO: Extraer materias crudas para poder leer el "semestre" ────────
+  static Future<List<Map<String, dynamic>>> getMateriasRawByCarrera(int carreraId) async {
+    final data = await _get('/materias') as List<dynamic>;
+    final allMaterias = data.cast<Map<String, dynamic>>();
+    // Filtramos localmente y conservamos todos los datos (como semestre y creditos)
+    return allMaterias.where((m) => m['carrera_id'] == carreraId).toList();
   }
 
   static Future<void> createMateria(Materia materia) async =>
@@ -307,6 +318,25 @@ class ApiService {
 
   static Future<void> deleteInscripcion(int id) async =>
       await _delete('/inscripciones/$id');
+
+  // ==================== REPORTES ====================
+  static Future<List<Map<String, dynamic>>> getReportesAdmin() async {
+    try {
+      final data = await _get('/evaluaciones/reportes/admin') as List<dynamic>;
+      return List<Map<String, dynamic>>.from(data);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getReportesEstudiante(int estudianteId) async {
+    try {
+      final data = await _get('/evaluaciones/reportes/estudiante/$estudianteId') as List<dynamic>;
+      return List<Map<String, dynamic>>.from(data);
+    } catch (_) {
+      return [];
+    }
+  }
 
   // ==================== HEALTH ====================
   static Future<bool> checkConnection() async {
