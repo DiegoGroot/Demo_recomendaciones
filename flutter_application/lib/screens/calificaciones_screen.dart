@@ -36,10 +36,10 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
       ]);
       if (!mounted) return;
       setState(() {
-        _cals = r[0] as List<Calificacion>;
+        _cals        = r[0] as List<Calificacion>;
         _estudiantes = r[1] as List<Estudiante>;
-        _materias = r[2] as List<Materia>;
-        _loading = false;
+        _materias    = r[2] as List<Materia>;
+        _loading     = false;
       });
     } catch (e) {
       if (!mounted) return;
@@ -67,7 +67,20 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
     catch (_) { return 'Mat. $id'; }
   }
 
-  // ── Generar recomendación automática ────────────────────────────────────
+  /// FIX: devuelve solo las materias de la carrera del estudiante seleccionado.
+  /// Si el estudiante no tiene carrera asignada, muestra todas.
+  List<Materia> _materiasParaEstudiante(int? estudianteId) {
+    if (estudianteId == null) return _materias;
+    try {
+      final est = _estudiantes.firstWhere((e) => e.estudianteId == estudianteId);
+      if (est.carreraId == null) return _materias;
+      final filtradas = _materias.where((m) => m.carreraId == est.carreraId).toList();
+      return filtradas.isNotEmpty ? filtradas : _materias;
+    } catch (_) {
+      return _materias;
+    }
+  }
+
   Future<void> _generarRecomendacion(Calificacion cal) async {
     if (cal.calificacionId == null) return;
     try {
@@ -118,17 +131,28 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
   }
 
   void _showForm([Calificacion? cal]) {
+    // Estado reactivo para manejar el cambio de estudiante → actualizar lista de materias
     int? estId = cal?.estudianteId ??
         (_estudiantes.isNotEmpty ? _estudiantes.first.estudianteId : null);
-    int? matId = cal?.materiaId ??
-        (_materias.isNotEmpty ? _materias.first.materiaId : null);
+
+    // FIX: calcular materias disponibles desde el inicio según el estudiante
+    List<Materia> materiasDisponibles = _materiasParaEstudiante(estId);
+
+    int? matId = cal?.materiaId;
+    // Si la materia guardada no está en las disponibles, resetear
+    if (matId != null && !materiasDisponibles.any((m) => m.materiaId == matId)) {
+      matId = materiasDisponibles.isNotEmpty ? materiasDisponibles.first.materiaId : null;
+    } else if (matId == null && materiasDisponibles.isNotEmpty) {
+      matId = materiasDisponibles.first.materiaId;
+    }
+
     int numParciales = cal?.numParciales ?? 2;
     String estado = cal?.estado ?? 'en_curso';
 
-    final p1Ctrl = TextEditingController(text: cal?.notaParcial1?.toString() ?? '');
-    final p2Ctrl = TextEditingController(text: cal?.notaParcial2?.toString() ?? '');
-    final p3Ctrl = TextEditingController(text: cal?.notaParcial3?.toString() ?? '');
-    final fnCtrl = TextEditingController(text: cal?.notaFinal?.toString() ?? '');
+    final p1Ctrl  = TextEditingController(text: cal?.notaParcial1?.toString() ?? '');
+    final p2Ctrl  = TextEditingController(text: cal?.notaParcial2?.toString() ?? '');
+    final p3Ctrl  = TextEditingController(text: cal?.notaParcial3?.toString() ?? '');
+    final fnCtrl  = TextEditingController(text: cal?.notaFinal?.toString() ?? '');
     final semCtrl = TextEditingController(text: cal?.semestre?.toString() ?? '1');
     final obsCtrl = TextEditingController(text: cal?.observaciones ?? '');
     bool saving = false;
@@ -144,6 +168,7 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
             width: 480,
             child: SingleChildScrollView(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
+
                 // ── Estudiante ──────────────────────────────────────────────
                 _label('Estudiante *'),
                 DropdownButtonFormField<int>(
@@ -154,16 +179,41 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                           value: e.estudianteId,
                           child: Text(e.nombre, overflow: TextOverflow.ellipsis)))
                       .toList(),
-                  onChanged: cal == null ? (v) => setS(() => estId = v) : null,
+                  onChanged: cal == null
+                      ? (v) => setS(() {
+                            estId = v;
+                            // FIX: cuando cambia el estudiante, recalcular materias
+                            materiasDisponibles = _materiasParaEstudiante(v);
+                            // Resetear materia si la actual no pertenece a la nueva carrera
+                            if (!materiasDisponibles.any((m) => m.materiaId == matId)) {
+                              matId = materiasDisponibles.isNotEmpty
+                                  ? materiasDisponibles.first.materiaId
+                                  : null;
+                            }
+                          })
+                      : null,
                 ),
                 const SizedBox(height: 12),
 
-                // ── Materia ─────────────────────────────────────────────────
+                // ── Materia (filtrada por carrera del estudiante) ───────────
                 _label('Materia *'),
+                // FIX: banner informativo con cuántas materias hay disponibles
+                if (materiasDisponibles.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(children: [
+                      Icon(Icons.info_outline, size: 13, color: Colors.indigo.shade400),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${materiasDisponibles.length} materia(s) disponibles para este programa',
+                        style: TextStyle(fontSize: 11, color: Colors.indigo.shade400),
+                      ),
+                    ]),
+                  ),
                 DropdownButtonFormField<int>(
-                  initialValue: matId,
+                  initialValue: materiasDisponibles.any((m) => m.materiaId == matId) ? matId : null,
                   decoration: _deco('Selecciona materia', Icons.book),
-                  items: _materias
+                  items: materiasDisponibles
                       .map((m) => DropdownMenuItem(
                           value: m.materiaId,
                           child: Text(m.nombre, overflow: TextOverflow.ellipsis)))
@@ -186,36 +236,29 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                // ── Parciales según cantidad seleccionada ───────────────────
+                // ── Notas parciales ─────────────────────────────────────────
                 Row(children: [
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      _label('Parcial 1'),
-                      _numField(p1Ctrl, 'ej: 8.5'),
-                    ]),
-                  ),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    _label('Parcial 1'),
+                    _numField(p1Ctrl, 'ej: 8.5'),
+                  ])),
                   if (numParciales >= 2) ...[
                     const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        _label('Parcial 2'),
-                        _numField(p2Ctrl, 'ej: 7.0'),
-                      ]),
-                    ),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      _label('Parcial 2'),
+                      _numField(p2Ctrl, 'ej: 7.0'),
+                    ])),
                   ],
                   if (numParciales >= 3) ...[
                     const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        _label('Parcial 3'),
-                        _numField(p3Ctrl, 'ej: 9.0'),
-                      ]),
-                    ),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      _label('Parcial 3'),
+                      _numField(p3Ctrl, 'ej: 9.0'),
+                    ])),
                   ],
                 ]),
                 const SizedBox(height: 8),
 
-                // Info escala
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
@@ -225,7 +268,7 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                   child: Row(children: [
                     Icon(Icons.info_outline, size: 14, color: Colors.blue.shade700),
                     const SizedBox(width: 6),
-                    Text('Escala: 0 a 10 • Aprobado: ≥ 6.0',
+                    Text('Escala: 0 a 10  •  Aprobado: ≥ 6.0',
                         style: TextStyle(fontSize: 11, color: Colors.blue.shade700)),
                   ]),
                 ),
@@ -233,19 +276,15 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
 
                 // ── Nota Final y Semestre ───────────────────────────────────
                 Row(children: [
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      _label('Nota Final *'),
-                      _numField(fnCtrl, 'ej: 8.0'),
-                    ]),
-                  ),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    _label('Nota Final *'),
+                    _numField(fnCtrl, 'ej: 8.0'),
+                  ])),
                   const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      _label('Semestre'),
-                      _numField(semCtrl, 'ej: 1', isInt: true),
-                    ]),
-                  ),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    _label('Semestre'),
+                    _numField(semCtrl, 'ej: 1', isInt: true),
+                  ])),
                 ]),
                 const SizedBox(height: 12),
 
@@ -255,9 +294,9 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                   initialValue: estado,
                   decoration: _deco('Estado', Icons.info_outline),
                   items: const [
-                    DropdownMenuItem(value: 'en_curso', child: Text('En curso')),
-                    DropdownMenuItem(value: 'aprobado', child: Text('✅ Aprobado')),
-                    DropdownMenuItem(value: 'reprobado', child: Text('❌ Reprobado')),
+                    DropdownMenuItem(value: 'en_curso',   child: Text('En curso')),
+                    DropdownMenuItem(value: 'aprobado',   child: Text('✅ Aprobado')),
+                    DropdownMenuItem(value: 'reprobado',  child: Text('❌ Reprobado')),
                   ],
                   onChanged: (v) => setS(() => estado = v ?? estado),
                 ),
@@ -297,7 +336,6 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
               onPressed: saving
                   ? null
                   : () async {
-                      // Validar campos obligatorios
                       if (estId == null || matId == null || fnCtrl.text.trim().isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                             content: Text('Estudiante, materia y nota final son obligatorios'),
@@ -305,7 +343,6 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                         return;
                       }
 
-                      // Validar rango 0-10
                       final notaFinal = double.tryParse(fnCtrl.text);
                       if (notaFinal == null || notaFinal < 0 || notaFinal > 10) {
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -317,7 +354,6 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                       final p1 = double.tryParse(p1Ctrl.text);
                       final p2 = double.tryParse(p2Ctrl.text);
                       final p3 = double.tryParse(p3Ctrl.text);
-
                       for (final nota in [p1, p2, p3]) {
                         if (nota != null && (nota < 0 || nota > 10)) {
                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -438,19 +474,17 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(
-                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Icon(Icons.error_outline, size: 64, color: Colors.red.shade300),
-                    const SizedBox(height: 16),
-                    Text('Error: $_error'),
-                    const SizedBox(height: 16),
-                    ElevatedButton.icon(
-                        onPressed: _load,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Reintentar')),
-                  ]))
+              ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Icon(Icons.error_outline, size: 64, color: Colors.red.shade300),
+                  const SizedBox(height: 16),
+                  Text('Error: $_error'),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                      onPressed: _load,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Reintentar')),
+                ]))
               : Column(children: [
-                  // Buscador
                   Padding(
                     padding: const EdgeInsets.all(12),
                     child: TextField(
@@ -467,24 +501,20 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                   ),
                   Expanded(
                     child: _filtradas.isEmpty
-                        ? Center(
-                            child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                              Icon(Icons.grade_outlined,
-                                  size: 64, color: Colors.grey.shade300),
-                              const SizedBox(height: 16),
-                              const Text('No hay calificaciones'),
-                              const SizedBox(height: 8),
-                              ElevatedButton.icon(
-                                onPressed: () => _showForm(),
-                                icon: const Icon(Icons.add),
-                                label: const Text('Agregar primera'),
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.indigo.shade700,
-                                    foregroundColor: Colors.white),
-                              ),
-                            ]))
+                        ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            Icon(Icons.grade_outlined, size: 64, color: Colors.grey.shade300),
+                            const SizedBox(height: 16),
+                            const Text('No hay calificaciones'),
+                            const SizedBox(height: 8),
+                            ElevatedButton.icon(
+                              onPressed: () => _showForm(),
+                              icon: const Icon(Icons.add),
+                              label: const Text('Agregar primera'),
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.indigo.shade700,
+                                  foregroundColor: Colors.white),
+                            ),
+                          ]))
                         : RefreshIndicator(
                             onRefresh: _load,
                             child: ListView.builder(
@@ -516,7 +546,6 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // Header
           Row(children: [
             Container(
               width: 50, height: 50,
@@ -528,37 +557,26 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
               child: Center(
                 child: Text(
                   c.notaFinal?.toStringAsFixed(1) ?? '-',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold, color: color, fontSize: 15),
+                  style: TextStyle(fontWeight: FontWeight.bold, color: color, fontSize: 15),
                 ),
               ),
             ),
             const SizedBox(width: 12),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(c.estudianteNombre ?? _nombreEst(c.estudianteId),
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                Text(c.materiaNombre ?? _nombreMat(c.materiaId),
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
-              ]),
-            ),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(c.estudianteNombre ?? _nombreEst(c.estudianteId),
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              Text(c.materiaNombre ?? _nombreMat(c.materiaId),
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+            ])),
             _estadoBadge(c.estado),
           ]),
           const SizedBox(height: 10),
-
-          // Parciales
           Wrap(spacing: 8, runSpacing: 6, children: [
-            if (c.notaParcial1 != null)
-              _notaChip('P1', c.notaParcial1!),
-            if (numP >= 2 && c.notaParcial2 != null)
-              _notaChip('P2', c.notaParcial2!),
-            if (numP >= 3 && c.notaParcial3 != null)
-              _notaChip('P3', c.notaParcial3!),
-            if (c.semestre != null)
-              _infoChip('Sem. ${c.semestre}', Colors.purple),
+            if (c.notaParcial1 != null) _notaChip('P1', c.notaParcial1!),
+            if (numP >= 2 && c.notaParcial2 != null) _notaChip('P2', c.notaParcial2!),
+            if (numP >= 3 && c.notaParcial3 != null) _notaChip('P3', c.notaParcial3!),
+            if (c.semestre != null) _infoChip('Sem. ${c.semestre}', Colors.purple),
           ]),
-
-          // Observaciones
           if (c.observaciones != null && c.observaciones!.isNotEmpty) ...[
             const SizedBox(height: 8),
             Container(
@@ -572,19 +590,13 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Icon(Icons.comment, size: 14, color: Colors.amber.shade700),
                 const SizedBox(width: 6),
-                Expanded(
-                  child: Text(c.observaciones!,
-                      style: TextStyle(
-                          fontSize: 12, color: Colors.amber.shade900)),
-                ),
+                Expanded(child: Text(c.observaciones!,
+                    style: TextStyle(fontSize: 12, color: Colors.amber.shade900))),
               ]),
             ),
           ],
-
           const SizedBox(height: 10),
-          // Acciones
           Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-            // Generar recomendación automática
             if (c.estado == 'aprobado' || c.estado == 'reprobado')
               TextButton.icon(
                 onPressed: () => _generarRecomendacion(c),
@@ -612,11 +624,7 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
   }
 
   Widget _notaChip(String label, double nota) {
-    final color = nota >= 8
-        ? Colors.green
-        : nota >= 6
-            ? Colors.orange
-            : Colors.red;
+    final color = nota >= 8 ? Colors.green : nota >= 6 ? Colors.orange : Colors.red;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -625,10 +633,7 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
         border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Text('$label: ${nota.toStringAsFixed(1)}',
-          style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: color.shade700)),
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color.shade700)),
     );
   }
 
@@ -659,13 +664,10 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
         border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Text(
-        estado == 'aprobado'
-            ? '✅ Aprobado'
-            : estado == 'reprobado'
-                ? '❌ Reprobado'
-                : '⏳ En curso',
-        style: TextStyle(
-            fontSize: 10, color: color, fontWeight: FontWeight.bold),
+        estado == 'aprobado' ? '✅ Aprobado'
+            : estado == 'reprobado' ? '❌ Reprobado'
+            : '⏳ En curso',
+        style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold),
       ),
     );
   }

@@ -14,11 +14,15 @@ class MateriaCreate(BaseModel):
     semestre: int = 1
     carrera_id: Optional[int] = 1
 
+# FIX: MateriaUpdate ahora incluye codigo y carrera_id para que el formulario
+# de edición pueda actualizar todos los campos, no solo nombre/descripcion/creditos/semestre.
 class MateriaUpdate(BaseModel):
     nombre: Optional[str] = None
+    codigo: Optional[str] = None
     descripcion: Optional[str] = None
     creditos: Optional[int] = None
     semestre: Optional[int] = None
+    carrera_id: Optional[int] = None
 
 @router.get("")
 def listar_materias(db=Depends(get_db)):
@@ -57,7 +61,7 @@ def crear_materia(data: MateriaCreate, db=Depends(get_db)):
         if cursor.fetchone():
             cursor.close()
             raise HTTPException(status_code=409, detail="Ya existe una materia con ese código")
-        
+
         cursor.execute(
             "INSERT INTO sira.materia (nombre, codigo, carrera_id, descripcion, creditos, semestre) VALUES (%s, %s, %s, %s, %s, %s)",
             (data.nombre, codigo, data.carrera_id, data.descripcion, data.creditos, data.semestre)
@@ -90,12 +94,23 @@ def actualizar_materia(materia_id: int, data: MateriaUpdate, db=Depends(get_db))
         if not cursor.fetchone():
             cursor.close()
             raise HTTPException(status_code=404, detail="Materia no encontrada")
-        
-        campos = {k: v for k, v in data.dict().items() if v is not None}
+
+        # FIX: usar model_dump en lugar del deprecado .dict()
+        campos = {k: v for k, v in data.model_dump().items() if v is not None}
         if not campos:
             cursor.close()
             raise HTTPException(status_code=400, detail="Sin datos para actualizar")
-        
+
+        # FIX: si se cambia el codigo, verificar que no exista en otra materia
+        if "codigo" in campos:
+            cursor.execute(
+                "SELECT materia_id FROM sira.materia WHERE codigo = %s AND materia_id != %s",
+                (campos["codigo"], materia_id)
+            )
+            if cursor.fetchone():
+                cursor.close()
+                raise HTTPException(status_code=409, detail="Ya existe una materia con ese código")
+
         set_clause = ", ".join([f"{k} = %s" for k in campos])
         cursor.execute(
             f"UPDATE sira.materia SET {set_clause} WHERE materia_id = %s",
@@ -126,7 +141,7 @@ def eliminar_materia(materia_id: int, db=Depends(get_db)):
         if not cursor.fetchone():
             cursor.close()
             raise HTTPException(status_code=404, detail="Materia no encontrada")
-        
+
         cursor.execute("DELETE FROM sira.materia WHERE materia_id = %s", (materia_id,))
         db.commit()
         cursor.close()

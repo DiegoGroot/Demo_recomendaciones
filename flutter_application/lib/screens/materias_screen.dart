@@ -16,7 +16,7 @@ class _MateriasScreenState extends State<MateriasScreen> {
   bool   _loading = true;
   String? _error;
   String _search = '';
-  int?   _filtroCarrera; // null = todas
+  int?   _filtroCarrera;
 
   @override
   void initState() {
@@ -133,8 +133,13 @@ class _MateriasScreenState extends State<MateriasScreen> {
                     materiaId: mat?.materiaId,
                     nombre: nombreCtrl.text.trim(),
                     codigo: codigoCtrl.text.trim(),
-                    creditos: int.tryParse(creditosCtrl.text) ?? 3,
-                    semestre: int.tryParse(semestreCtrl.text),
+                    // FIX: si el campo está vacío, usa null para que el backend conserve el valor
+                    creditos: creditosCtrl.text.trim().isEmpty
+                        ? null
+                        : int.tryParse(creditosCtrl.text),
+                    semestre: semestreCtrl.text.trim().isEmpty
+                        ? null
+                        : int.tryParse(semestreCtrl.text),
                     carreraId: carreraId!,
                   );
                   if (mat != null) {
@@ -194,8 +199,9 @@ class _MateriasScreenState extends State<MateriasScreen> {
                   SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: const Text('Eliminar'),
           ),
         ],
       ),
@@ -235,7 +241,6 @@ class _MateriasScreenState extends State<MateriasScreen> {
                     icon: const Icon(Icons.refresh), label: const Text('Reintentar')),
                 ]))
               : Column(children: [
-                  // ── Barra búsqueda + filtro carrera ──────────────────────
                   Container(
                     color: Colors.blue.shade50,
                     padding: const EdgeInsets.all(12),
@@ -253,7 +258,6 @@ class _MateriasScreenState extends State<MateriasScreen> {
                         onChanged: (v) => setState(() => _search = v),
                       ),
                       const SizedBox(height: 8),
-                      // Chips de filtro por carrera
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(children: [
@@ -263,8 +267,6 @@ class _MateriasScreenState extends State<MateriasScreen> {
                       ),
                     ]),
                   ),
-
-                  // ── Lista de materias ─────────────────────────────────
                   Expanded(
                     child: _filtradas.isEmpty
                         ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -321,6 +323,10 @@ class _MateriasScreenState extends State<MateriasScreen> {
 
   Widget _materiaCard(Materia m) {
     final carreraNombre = _nombreCarrera(m.carreraId);
+    // FIX: mostrar '–' cuando creditos es null, evitar mostrar '0' falso
+    final creditosLabel = m.creditos != null ? '${m.creditos}' : '–';
+    final tieneCreditos = m.creditos != null;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       elevation: 2,
@@ -334,19 +340,38 @@ class _MateriasScreenState extends State<MateriasScreen> {
         ),
         child: ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          // FIX overflow: tamaños reducidos y ClipRect para que nunca desborde
           leading: Container(
             width: 56, height: 56,
             decoration: BoxDecoration(
-              color: Colors.blue.shade700,
+              color: tieneCreditos ? Colors.blue.shade700 : Colors.grey.shade400,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Text('${m.creditos ?? 0}',
-                  style: const TextStyle(color: Colors.white,
-                      fontWeight: FontWeight.bold, fontSize: 20)),
-              Text('créd.', style: TextStyle(color: Colors.white.withValues(alpha: 0.8),
-                  fontSize: 9)),
-            ]),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Text(
+                  creditosLabel,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    // FIX: fuente más pequeña si hay 2+ dígitos para no desbordar
+                    fontSize: creditosLabel.length > 1 ? 16 : 20,
+                  ),
+                  overflow: TextOverflow.clip,
+                  maxLines: 1,
+                ),
+                Text(
+                  'créd.',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    fontSize: 9,
+                  ),
+                  overflow: TextOverflow.clip,
+                  maxLines: 1,
+                ),
+              ]),
+            ),
           ),
           title: Text(m.nombre,
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
