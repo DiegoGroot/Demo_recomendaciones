@@ -198,7 +198,7 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                 // ── Estudiante ──────────────────────────────────────────────
                 _label('Estudiante *'),
                 DropdownButtonFormField<int>(
-                  value: estId,
+                  initialValue: estId,
                   isExpanded: true,
                   menuMaxHeight: 280,
                   decoration: _deco('Selecciona estudiante', Icons.person),
@@ -243,7 +243,7 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                     ]),
                   ),
                 DropdownButtonFormField<int>(
-                  value: materiasDisponibles.any((m) => m.materiaId == matId) ? matId : null,
+                  initialValue: materiasDisponibles.any((m) => m.materiaId == matId) ? matId : null,
                   isExpanded: true,
                   menuMaxHeight: 280,
                   decoration: _deco('Selecciona materia', Icons.book),
@@ -259,7 +259,7 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                 // ── Número de parciales ─────────────────────────────────────
                 _label('Número de Parciales'),
                 DropdownButtonFormField<int>(
-                  value: numParciales,
+                  initialValue: numParciales,
                   isExpanded: true,
                   decoration: _deco('Parciales de la materia', Icons.format_list_numbered),
                   items: const [

@@ -220,7 +220,7 @@ class _EstudiantesScreenState extends State<EstudiantesScreen> {
                         const SizedBox(height: 18),
                         _sectionTitle('Información académica'),
                         DropdownButtonFormField<int>(
-                          value: carreraId,
+                          initialValue: carreraId,
                           isExpanded: true,
                           decoration: _deco('Programa Educativo', Icons.school),
                           items: _carreras
@@ -230,7 +230,7 @@ class _EstudiantesScreenState extends State<EstudiantesScreen> {
                         ),
                         const SizedBox(height: 12),
                         DropdownButtonFormField<int>(
-                          value: semestreVal,
+                          initialValue: semestreVal,
                           decoration: _deco('Semestre Actual', Icons.looks_one),
                           items: List.generate(
                             12,
@@ -242,7 +242,7 @@ class _EstudiantesScreenState extends State<EstudiantesScreen> {
                         _field(matriculaCtrl, 'Matrícula', Icons.badge),
                         const SizedBox(height: 12),
                         DropdownButtonFormField<String>(
-                          value: modalidadVal,
+                          initialValue: modalidadVal,
                           isExpanded: true,
                           decoration: _deco('Modalidad', Icons.class_),
                           items: ['Presencial', 'Virtual', 'Híbrida']
@@ -272,7 +272,7 @@ class _EstudiantesScreenState extends State<EstudiantesScreen> {
                         ),
                         const SizedBox(height: 12),
                         DropdownButtonFormField<String>(
-                          value: sexoVal,
+                          initialValue: sexoVal,
                           isExpanded: true,
                           decoration: _deco('Sexo', Icons.wc),
                           items: ['Masculino', 'Femenino', 'Otro', 'Prefiero no decirlo']
