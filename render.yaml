@@ -12,7 +12,7 @@ services:
       - key: DB_USER
         value: avnadmin
       - key: DB_PASSWORD
-        value: AVNS_pCkFUvAZSqrrPy_Bmq4
+        sync: false
       - key: DB_NAME
         value: defaultdb
       - key: DB_PORT
