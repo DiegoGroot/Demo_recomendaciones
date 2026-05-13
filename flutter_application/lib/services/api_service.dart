@@ -68,14 +68,60 @@ class ApiService {
     required String correo,
     required String contrasena,
     int? carreraId,
-    String? matricula,
+    int? semestreActual,
+    String? sexo,
+    String? nacionalidad,
+    String? direccion,
+    String? fechaNacimiento,
+    String? modalidad,
+    List<int>? materiasIds,
   }) async =>
       await _post('/estudiantes/registro', {
-        'nombre': nombre,
-        'correo': correo,
-        'contrasena': contrasena,
+        'nombre': nombre.trim(),
+        'correo': correo.trim(),
+        'contrasena': contrasena.trim(),
         if (carreraId != null) 'carrera_id': carreraId,
-        if (matricula != null) 'matricula': matricula,
+        if (semestreActual != null) 'semestre_actual': semestreActual,
+        if (sexo != null && sexo.trim().isNotEmpty) 'sexo': sexo.trim(),
+        if (nacionalidad != null && nacionalidad.trim().isNotEmpty) 'nacionalidad': nacionalidad.trim(),
+        if (direccion != null && direccion.trim().isNotEmpty) 'direccion': direccion.trim(),
+        if (fechaNacimiento != null && fechaNacimiento.trim().isNotEmpty)
+          'fecha_nacimiento': fechaNacimiento.trim(),
+        if (modalidad != null && modalidad.trim().isNotEmpty) 'modalidad': modalidad.trim(),
+        if (materiasIds != null) 'materias_ids': materiasIds,
+      }) as Map<String, dynamic>;
+
+  static Future<Map<String, dynamic>> registrarAdmin({
+    required String nombre,
+    required String correo,
+    required String contrasena,
+  }) async =>
+      await _post('/auth/admin/registro', {
+        'nombre': nombre.trim(),
+        'correo': correo.trim(),
+        'contrasena': contrasena.trim(),
+      }) as Map<String, dynamic>;
+
+
+
+  static Future<Map<String, dynamic>> buscarCuentaRecuperacion({
+    required String correo,
+    String? tipo,
+  }) async =>
+      await _post('/auth/recuperar/buscar', {
+        'correo': correo.trim(),
+        if (tipo != null && tipo.trim().isNotEmpty) 'tipo': tipo.trim(),
+      }) as Map<String, dynamic>;
+
+  static Future<Map<String, dynamic>> cambiarContrasenaRecuperacion({
+    required String correo,
+    required String nuevaContrasena,
+    String? tipo,
+  }) async =>
+      await _post('/auth/recuperar/cambiar', {
+        'correo': correo.trim(),
+        'nueva_contrasena': nuevaContrasena.trim(),
+        if (tipo != null && tipo.trim().isNotEmpty) 'tipo': tipo.trim(),
       }) as Map<String, dynamic>;
 
   // ==================== CARRERAS ====================
@@ -93,21 +139,18 @@ class ApiService {
   static Future<void> deleteCarrera(int id) async =>
       await _delete('/carreras/$id');
 
-   static Future<Map<String, dynamic>> importarMapaCurricular(int carreraId, String urlPdf) async =>
-      await _post('/carreras/$carreraId/importar-mapa', {'url_pdf': urlPdf}) as Map<String, dynamic>;   
+  static Future<Map<String, dynamic>> importarMapaCurricular(
+          int carreraId, String urlPdf) async =>
+      await _post('/carreras/$carreraId/importar-mapa', {'url_pdf': urlPdf})
+          as Map<String, dynamic>;
 
   // ==================== MATERIAS ====================
+
   static Future<List<Materia>> getMaterias() async {
     final data = await _get('/materias') as List<dynamic>;
-    return data.map((m) {
-      final map = m as Map<String, dynamic>;
-      return Materia(
-        materiaId: map['materia_id'] ?? map['id'] ?? 0,
-        nombre: map['nombre'] ?? 'Sin nombre',
-        codigo: map['codigo'] ?? '',
-        carreraId: map['carrera_id'] ?? 0,
-      );
-    }).toList();
+    return data
+        .map((m) => Materia.fromJson(m as Map<String, dynamic>))
+        .toList();
   }
 
   static Future<List<Materia>> getMateriasByCarrera(int carreraId) async {
@@ -115,12 +158,28 @@ class ApiService {
     return data.map((m) => Materia.fromJson(m as Map<String, dynamic>)).toList();
   }
 
-  // ── NUEVO: Extraer materias crudas para poder leer el "semestre" ────────
-  static Future<List<Map<String, dynamic>>> getMateriasRawByCarrera(int carreraId) async {
+  static Future<List<Map<String, dynamic>>> getMateriasRaw() async {
     final data = await _get('/materias') as List<dynamic>;
-    final allMaterias = data.cast<Map<String, dynamic>>();
-    // Filtramos localmente y conservamos todos los datos (como semestre y creditos)
-    return allMaterias.where((m) => m['carrera_id'] == carreraId).toList();
+    return data.cast<Map<String, dynamic>>();
+  }
+
+  static Future<List<Map<String, dynamic>>> getMateriasRawByCarrera(
+      int carreraId) async {
+    final all = await getMateriasRaw();
+    return all.where((m) => m['carrera_id'] == carreraId).toList();
+  }
+
+
+  static Future<List<Map<String, dynamic>>> getMateriasRawByCarreraYSemestre(
+      int carreraId, int semestre) async {
+    final all = await getMateriasRaw();
+    return all.where((m) {
+      final c = m['carrera_id'];
+      final s = m['semestre'];
+      final carreraOk = c == carreraId || c.toString() == carreraId.toString();
+      final semestreOk = s == semestre || s.toString() == semestre.toString();
+      return carreraOk && semestreOk;
+    }).toList();
   }
 
   static Future<void> createMateria(Materia materia) async =>
@@ -135,7 +194,9 @@ class ApiService {
   // ==================== ESTUDIANTES ====================
   static Future<List<Estudiante>> getEstudiantes() async {
     final data = await _get('/estudiantes') as List<dynamic>;
-    return data.map((e) => Estudiante.fromJson(e as Map<String, dynamic>)).toList();
+    return data
+        .map((e) => Estudiante.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   static Future<Estudiante> getEstudianteById(int id) async {
@@ -155,45 +216,75 @@ class ApiService {
   // ==================== CALIFICACIONES ====================
   static Future<List<Calificacion>> getCalificaciones() async {
     final data = await _get('/calificaciones') as List<dynamic>;
-    return data.map((c) => Calificacion.fromJson(c as Map<String, dynamic>)).toList();
+    return data
+        .map((c) => Calificacion.fromJson(c as Map<String, dynamic>))
+        .toList();
   }
 
-  static Future<List<Calificacion>> getCalificacionesByEstudiante(int estudianteId) async {
-    final data = await _get('/calificaciones/estudiante/$estudianteId') as List<dynamic>;
-    return data.map((c) => Calificacion.fromJson(c as Map<String, dynamic>)).toList();
+  static Future<List<Calificacion>> getCalificacionesByEstudiante(
+      int estudianteId) async {
+    final data =
+        await _get('/calificaciones/estudiante/$estudianteId') as List<dynamic>;
+    return data
+        .map((c) => Calificacion.fromJson(c as Map<String, dynamic>))
+        .toList();
   }
 
   static Future<void> createCalificacion(Map<String, dynamic> data) async =>
       await _post('/calificaciones', data);
 
-  static Future<void> updateCalificacion(int id, Map<String, dynamic> data) async =>
+  static Future<void> updateCalificacion(
+          int id, Map<String, dynamic> data) async =>
       await _put('/calificaciones/$id', data);
 
   static Future<void> deleteCalificacion(int id) async =>
       await _delete('/calificaciones/$id');
 
-  static Future<Map<String, dynamic>> generarRecomendacion(int calificacionId) async =>
-      await _post('/recomendaciones/generar/por-calificacion/$calificacionId', {})
+  static Future<Map<String, dynamic>> generarRecomendacion(
+          int calificacionId) async =>
+      await _post(
+              '/recomendaciones/generar/por-calificacion/$calificacionId', {})
           as Map<String, dynamic>;
 
   // ==================== RECOMENDACIONES ====================
   static Future<List<Recomendacion>> getRecomendaciones() async {
     final data = await _get('/recomendaciones') as List<dynamic>;
-    return data.map((r) => Recomendacion.fromJson(r as Map<String, dynamic>)).toList();
+    return data
+        .map((r) => Recomendacion.fromJson(r as Map<String, dynamic>))
+        .toList();
   }
 
-  static Future<List<Recomendacion>> getRecomendacionesByEstudiante(int estudianteId) async {
+  static Future<List<Recomendacion>> getRecomendacionesByEstudiante(
+      int estudianteId) async {
     try {
-      final data = await _get('/recomendaciones?estudiante_id=$estudianteId') as List<dynamic>;
-      return data.map((r) => Recomendacion.fromJson(r as Map<String, dynamic>)).toList();
+      final data = await _get(
+          '/recomendaciones?estudiante_id=$estudianteId') as List<dynamic>;
+      return data
+          .map((r) => Recomendacion.fromJson(r as Map<String, dynamic>))
+          .toList();
     } catch (_) {
       return [];
     }
   }
 
-  static Future<void> calificarRecomendacion(int recomendacionId, int calificacion) async =>
-      await _post('/recomendaciones/$recomendacionId/calificar', {'calificacion': calificacion});
+  static Future<void> calificarRecomendacion(
+          int recomendacionId, int calificacion) async =>
+      await _post('/recomendaciones/$recomendacionId/calificar', {
+        'estrellas_docente': calificacion,
+        'calificacion': calificacion,
+        'retroalimentacion_docente': '',
+      });
 
+  static Future<void> calificarRecomendacionCompleta(
+          int recomendacionId, int estrellas, String feedback) async =>
+      await _post('/recomendaciones/$recomendacionId/calificar', {
+        'estrellas_docente': estrellas,
+        'calificacion': estrellas,
+        'retroalimentacion_docente': feedback,
+      });
+
+  // FIX: usa POST /recomendaciones (endpoint que sí existe)
+  // antes llamaba a /recomendaciones/crear-con-evaluacion que NO existe
   static Future<void> createRecomendacion(Recomendacion r) async =>
       await _post('/recomendaciones', r.toJson());
 
@@ -210,23 +301,28 @@ class ApiService {
   }) async {
     String path = '/evaluaciones';
     final params = <String>[];
-    if (recomendacionId != null) params.add('recomendacion_id=$recomendacionId');
+    if (recomendacionId != null) {
+      params.add('recomendacion_id=$recomendacionId');
+    }
     if (estado != null) params.add('estado=$estado');
     if (params.isNotEmpty) path += '?${params.join('&')}';
     final data = await _get(path) as List<dynamic>;
     return data.cast<Map<String, dynamic>>();
   }
 
-  static Future<List<Map<String, dynamic>>> getEvaluacionesByEstudiante(int estudianteId) async {
+  static Future<List<Map<String, dynamic>>> getEvaluacionesByEstudiante(
+      int estudianteId) async {
     try {
-      final data = await _get('/evaluaciones/estudiante/$estudianteId') as List<dynamic>;
+      final data =
+          await _get('/evaluaciones/estudiante/$estudianteId') as List<dynamic>;
       return List<Map<String, dynamic>>.from(data);
     } catch (_) {
       return [];
     }
   }
 
-  static Future<Map<String, dynamic>> createEvaluacion(Map<String, dynamic> data) async =>
+  static Future<Map<String, dynamic>> createEvaluacion(
+          Map<String, dynamic> data) async =>
       await _post('/evaluaciones', data) as Map<String, dynamic>;
 
   static Future<void> updateEvaluacion(int id, Map<String, dynamic> data) async =>
@@ -236,16 +332,19 @@ class ApiService {
       await _delete('/evaluaciones/$id');
 
   // ── Preguntas ─────────────────────────────────────────────────────────────
-  static Future<List<Map<String, dynamic>>> getPreguntasByEvaluacion(int evaluacionId) async {
+  static Future<List<Map<String, dynamic>>> getPreguntasByEvaluacion(
+      int evaluacionId) async {
     try {
-      final data = await _get('/evaluaciones/preguntas/evaluacion/$evaluacionId') as List<dynamic>;
+      final data = await _get(
+          '/evaluaciones/preguntas/evaluacion/$evaluacionId') as List<dynamic>;
       return List<Map<String, dynamic>>.from(data);
     } catch (_) {
       return [];
     }
   }
 
-  static Future<Map<String, dynamic>> createPregunta(Map<String, dynamic> data) async =>
+  static Future<Map<String, dynamic>> createPregunta(
+          Map<String, dynamic> data) async =>
       await _post('/evaluaciones/preguntas', data) as Map<String, dynamic>;
 
   static Future<void> updatePregunta(int id, Map<String, dynamic> data) async =>
@@ -255,12 +354,15 @@ class ApiService {
       await _delete('/evaluaciones/preguntas/$id');
 
   // ── Opciones ──────────────────────────────────────────────────────────────
-  static Future<List<Map<String, dynamic>>> getOpcionesByPregunta(int preguntaId) async {
-    final data = await _get('/evaluaciones/opciones/pregunta/$preguntaId') as List<dynamic>;
+  static Future<List<Map<String, dynamic>>> getOpcionesByPregunta(
+      int preguntaId) async {
+    final data = await _get(
+        '/evaluaciones/opciones/pregunta/$preguntaId') as List<dynamic>;
     return data.cast<Map<String, dynamic>>();
   }
 
-  static Future<Map<String, dynamic>> createOpcion(Map<String, dynamic> data) async =>
+  static Future<Map<String, dynamic>> createOpcion(
+          Map<String, dynamic> data) async =>
       await _post('/evaluaciones/opciones', data) as Map<String, dynamic>;
 
   static Future<void> updateOpcion(int id, Map<String, dynamic> data) async =>
@@ -270,9 +372,11 @@ class ApiService {
       await _delete('/evaluaciones/opciones/$id');
 
   // ── Respuestas del estudiante ─────────────────────────────────────────────
-  static Future<List<Map<String, dynamic>>> getPreguntas(int evaluacionId) async {
+  static Future<List<Map<String, dynamic>>> getPreguntas(
+      int evaluacionId) async {
     try {
-      final data = await _get('/evaluaciones/preguntas/evaluacion/$evaluacionId') as List<dynamic>;
+      final data = await _get(
+          '/evaluaciones/preguntas/evaluacion/$evaluacionId') as List<dynamic>;
       return List<Map<String, dynamic>>.from(data);
     } catch (_) {
       return [];
@@ -290,9 +394,25 @@ class ApiService {
         'respuestas': respuestas,
       });
 
-  static Future<List<Map<String, dynamic>>> getResultadosEstudiante(int estudianteId) async {
+  static Future<List<Map<String, dynamic>>> getRespuestasEstudianteEval({
+    required int evaluacionId,
+    required int estudianteId,
+  }) async {
     try {
-      final data = await _get('/evaluaciones/resultados/estudiante/$estudianteId') as List<dynamic>;
+      final data = await _get(
+          '/evaluaciones/respuestas/evaluacion/$evaluacionId/estudiante/$estudianteId')
+          as List<dynamic>;
+      return List<Map<String, dynamic>>.from(data);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getResultadosEstudiante(
+      int estudianteId) async {
+    try {
+      final data = await _get(
+          '/evaluaciones/resultados/estudiante/$estudianteId') as List<dynamic>;
       return List<Map<String, dynamic>>.from(data);
     } catch (_) {
       return [];
@@ -305,15 +425,19 @@ class ApiService {
     return data.cast<Map<String, dynamic>>();
   }
 
-  static Future<List<Map<String, dynamic>>> getInscripcionesByEstudiante(int estudianteId) async {
-    final data = await _get('/inscripciones/estudiante/$estudianteId') as List<dynamic>;
+  static Future<List<Map<String, dynamic>>> getInscripcionesByEstudiante(
+      int estudianteId) async {
+    final data =
+        await _get('/inscripciones/estudiante/$estudianteId') as List<dynamic>;
     return data.cast<Map<String, dynamic>>();
   }
 
-  static Future<Map<String, dynamic>> createInscripcion(Map<String, dynamic> data) async =>
+  static Future<Map<String, dynamic>> createInscripcion(
+          Map<String, dynamic> data) async =>
       await _post('/inscripciones', data) as Map<String, dynamic>;
 
-  static Future<void> updateInscripcion(int id, Map<String, dynamic> data) async =>
+  static Future<void> updateInscripcion(
+          int id, Map<String, dynamic> data) async =>
       await _put('/inscripciones/$id', data);
 
   static Future<void> deleteInscripcion(int id) async =>
@@ -322,16 +446,19 @@ class ApiService {
   // ==================== REPORTES ====================
   static Future<List<Map<String, dynamic>>> getReportesAdmin() async {
     try {
-      final data = await _get('/evaluaciones/reportes/admin') as List<dynamic>;
+      final data =
+          await _get('/evaluaciones/reportes/admin') as List<dynamic>;
       return List<Map<String, dynamic>>.from(data);
     } catch (_) {
       return [];
     }
   }
 
-  static Future<List<Map<String, dynamic>>> getReportesEstudiante(int estudianteId) async {
+  static Future<List<Map<String, dynamic>>> getReportesEstudiante(
+      int estudianteId) async {
     try {
-      final data = await _get('/evaluaciones/reportes/estudiante/$estudianteId') as List<dynamic>;
+      final data = await _get(
+          '/evaluaciones/reportes/estudiante/$estudianteId') as List<dynamic>;
       return List<Map<String, dynamic>>.from(data);
     } catch (_) {
       return [];
@@ -347,6 +474,102 @@ class ApiService {
       return r.statusCode == 200;
     } catch (_) {
       return false;
+    }
+  }
+
+  // ==================== RETROALIMENTACIÓN ====================
+  static Future<Map<String, dynamic>> guardarRetroalimentacion(
+      int respuestaId, int estrellas, String retroalimentacion) async {
+    return await _post('/evaluaciones/respuesta/$respuestaId/retroalimentacion', {
+      'respuesta_id': respuestaId,
+      'calificacion_estrellas': estrellas,
+      'retroalimentacion_maestro': retroalimentacion,
+    }) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> marcarLikeRetroalimentacion(
+      int respuestaId, bool liked) async {
+    return await _post('/evaluaciones/respuesta/$respuestaId/like-retroalimentacion', {
+      'liked': liked,
+    }) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> obtenerRetroalimentacion(
+      int respuestaId) async {
+    return await _get(
+        '/evaluaciones/respuesta/$respuestaId/retroalimentacion') as Map<String, dynamic>;
+  }
+
+  static Future<List<Map<String, dynamic>>> obtenerResumenRetroalimentaciones(
+      int evaluacionId) async {
+    try {
+      final data = await _get(
+          '/evaluaciones/evaluacion/$evaluacionId/resumen-retroalimentaciones') as List<dynamic>;
+      return data.cast<Map<String, dynamic>>();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // ==================== RECOMENDACIONES - RESUMEN ====================
+  static Future<Map<String, dynamic>> obtenerResumenRecomendacion(
+      int recomendacionId) async {
+    return await _get(
+        '/recomendaciones/$recomendacionId/resumen') as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> obtenerResumenRecomendacionesEstudiante(
+      int estudianteId) async {
+    return await _get(
+        '/recomendaciones/estudiante/$estudianteId/resumen-todos') as Map<String, dynamic>;
+  }
+
+  static Future<List<Map<String, dynamic>>> obtenerReporteGeneralRecomendaciones() async {
+    try {
+      final data = await _get('/recomendaciones/reportes/general') as List<dynamic>;
+      return List<Map<String, dynamic>>.from(data);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // ==================== PROGRESO POR CARRERA ====================
+  static Future<Map<String, dynamic>> obtenerProgresoPorCarrera(
+      int carreraId) async {
+    return await _get('/calificaciones/carrera/$carreraId/progreso') as Map<String, dynamic>;
+  }
+
+  static Future<List<Map<String, dynamic>>> obtenerListaEstudiantesCarrera(
+      int carreraId) async {
+    try {
+      final data = await _get(
+          '/calificaciones/carrera/$carreraId/lista-simple') as List<dynamic>;
+      return data.cast<Map<String, dynamic>>();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>> obtenerEstadisticasCarrera(
+      int carreraId) async {
+    return await _get(
+        '/calificaciones/carrera/$carreraId/estadisticas') as Map<String, dynamic>;
+  }
+
+  // ==================== CARRERAS CON ESTUDIANTES ====================
+  static Future<Map<String, dynamic>> obtenerCarreraConEstudiantes(
+      int carreraId) async {
+    return await _get(
+        '/carreras/$carreraId/con-estudiantes') as Map<String, dynamic>;
+  }
+
+  static Future<List<Map<String, dynamic>>> listarCarrerasConEstudiantes() async {
+    try {
+      final data =
+          await _get('/carreras/listar-con-estudiantes') as List<dynamic>;
+      return data.cast<Map<String, dynamic>>();
+    } catch (_) {
+      return [];
     }
   }
 }

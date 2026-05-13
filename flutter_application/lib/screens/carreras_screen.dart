@@ -194,27 +194,28 @@ class _CarrerasScreenState extends State<CarrerasScreen> {
             return GridView.builder(
               padding: const EdgeInsets.all(16),
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: isTablet ? 3 : 2,
+                crossAxisCount: isTablet ? 3 : 1,
                 mainAxisSpacing: 16,
                 crossAxisSpacing: 16,
-                childAspectRatio: isTablet ? 1.0 : 1.1,
+                childAspectRatio: isTablet ? 1.15 : 2.25,
               ),
               itemCount: carreras.length,
               itemBuilder: (context, index) {
                 final carrera = carreras[index];
                 final colors = [Colors.purple, Colors.indigo, Colors.blue, Colors.teal, Colors.green, Colors.orange];
                 final color = colors[index % colors.length];
+                final descripcion = (carrera.descripcion ?? '').trim();
 
                 return GestureDetector(
                   onTap: () => _mostrarDetallesYMaterias(carrera, color),
                   child: Card(
                     elevation: 4,
+                    clipBehavior: Clip.antiAlias,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Container(
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
                         gradient: LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
@@ -222,45 +223,72 @@ class _CarrerasScreenState extends State<CarrerasScreen> {
                         ),
                       ),
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Icon(Icons.school_rounded, size: 40, color: Colors.white70),
-                                const SizedBox(height: 12),
-                                Text(
-                                  carrera.nombre ?? 'Sin nombre',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(Icons.school_rounded, size: 38, color: Colors.white70),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    carrera.nombre ?? 'Sin nombre',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
+                                  const SizedBox(height: 8),
+                                  Expanded(
+                                    child: Text(
+                                      descripcion.isEmpty ? 'Sin descripción registrada' : descripcion,
+                                      style: TextStyle(
+                                        color: Colors.white.withOpacity(0.88),
+                                        fontSize: 12.5,
+                                        height: 1.25,
+                                      ),
+                                      maxLines: isTablet ? 4 : 3,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                           Container(
                             width: double.infinity,
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            decoration: const BoxDecoration(
-                              color: Colors.white24,
-                              borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
-                            ),
+                            decoration: const BoxDecoration(color: Colors.white24),
                             child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceAround,
                               children: [
-                                GestureDetector(
-                                  onTap: () => _showDialog(carrera: carrera),
-                                  child: const Icon(Icons.edit, color: Colors.white, size: 20),
+                                Expanded(
+                                  child: Text(
+                                    'Toca para ver materias',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.9),
+                                      fontSize: 11,
+                                    ),
+                                  ),
                                 ),
-                                GestureDetector(
-                                  onTap: () => _deleteCarrera(carrera.carreraId!),
-                                  child: const Icon(Icons.delete, color: Colors.white, size: 20),
+                                IconButton(
+                                  visualDensity: VisualDensity.compact,
+                                  tooltip: 'Editar',
+                                  onPressed: () => _showDialog(carrera: carrera),
+                                  icon: const Icon(Icons.edit, color: Colors.white, size: 20),
+                                ),
+                                IconButton(
+                                  visualDensity: VisualDensity.compact,
+                                  tooltip: 'Eliminar',
+                                  onPressed: carrera.carreraId == null
+                                      ? null
+                                      : () => _deleteCarrera(carrera.carreraId!),
+                                  icon: const Icon(Icons.delete, color: Colors.white, size: 20),
                                 ),
                               ],
                             ),
@@ -276,6 +304,7 @@ class _CarrerasScreenState extends State<CarrerasScreen> {
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'fab_carreras',
         onPressed: () => _showDialog(),
         backgroundColor: Colors.purple.shade700,
         icon: const Icon(Icons.add),

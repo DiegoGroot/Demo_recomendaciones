@@ -14,6 +14,7 @@ class Estudiante {
   final String? direccion;
   final String? matricula;
   final String? modalidad;
+  final int? semestreActual; // ← NUEVO CAMPO
 
   Estudiante({
     this.estudianteId,
@@ -31,6 +32,7 @@ class Estudiante {
     this.direccion,
     this.matricula,
     this.modalidad,
+    this.semestreActual, // ← NUEVO
   });
 
   factory Estudiante.fromJson(Map<String, dynamic> json) {
@@ -50,6 +52,7 @@ class Estudiante {
       direccion: json['direccion'] as String?,
       matricula: json['matricula'] as String?,
       modalidad: json['modalidad'] as String?,
+      semestreActual: json['semestre_actual'] as int?, // ← NUEVO
     );
   }
 
@@ -67,6 +70,7 @@ class Estudiante {
       if (direccion != null) 'direccion': direccion,
       if (matricula != null) 'matricula': matricula,
       if (modalidad != null) 'modalidad': modalidad,
+      if (semestreActual != null) 'semestre_actual': semestreActual, // ← NUEVO
     };
   }
 }

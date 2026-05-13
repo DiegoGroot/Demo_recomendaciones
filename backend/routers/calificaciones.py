@@ -342,3 +342,141 @@ def eliminar_calificacion(calificacion_id: int, db=Depends(get_db)):
         db.rollback()
         cursor.close()
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# =============================================================================
+# PROGRESO POR CARRERA (Nuevas funcionalidades)
+# =============================================================================
+
+@router.get("/carrera/{carrera_id}/progreso")
+def obtener_progreso_por_carrera(carrera_id: int, db=Depends(get_db)):
+    """
+    Obtiene progreso académico de TODOS los estudiantes de una carrera.
+    Retorna lista de estudiantes con su promedio y detalles de calificaciones.
+    """
+    cursor = db.cursor(dictionary=True)
+    try:
+        # Verificar que la carrera existe
+        cursor.execute("SELECT carrera_id FROM sira.carrera WHERE carrera_id = %s", (carrera_id,))
+        if not cursor.fetchone():
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Carrera no encontrada")
+        
+        # Obtener todos los estudiantes de la carrera con sus calificaciones
+        cursor.execute("""
+            SELECT 
+                e.estudiante_id,
+                e.nombre,
+                e.codigo_estudiante,
+                e.promedio_general,
+                e.estado_academico,
+                COUNT(DISTINCT c.calificacion_id) as total_calificaciones,
+                COUNT(DISTINCT CASE WHEN c.estado = 'aprobado' THEN c.calificacion_id END) as materias_aprobadas,
+                COUNT(DISTINCT CASE WHEN c.estado = 'reprobado' THEN c.calificacion_id END) as materias_reprobadas,
+                AVG(c.nota_final) as promedio_calculado,
+                GROUP_CONCAT(DISTINCT c.materia_id) as materias_ids
+            FROM sira.estudiante e
+            LEFT JOIN sira.calificacion c ON e.estudiante_id = c.estudiante_id
+            WHERE e.carrera_id = %s
+            GROUP BY e.estudiante_id
+            ORDER BY e.promedio_general DESC, e.nombre
+        """, (carrera_id,))
+        
+        estudiantes = cursor.fetchall()
+        
+        # Para cada estudiante, obtener detalles de materias
+        estudiantes_detalle = []
+        for est in estudiantes:
+            cursor.execute("""
+                SELECT c.calificacion_id, m.nombre as materia_nombre, 
+                       c.nota_parcial1, c.nota_parcial2, c.nota_parcial3,
+                       c.nota_final, c.estado, c.semestre
+                FROM sira.calificacion c
+                JOIN sira.materia m ON c.materia_id = m.materia_id
+                WHERE c.estudiante_id = %s
+                ORDER BY c.semestre, m.nombre
+            """, (est['estudiante_id'],))
+            
+            calificaciones = cursor.fetchall()
+            estudiantes_detalle.append({
+                **est,
+                'calificaciones': calificaciones
+            })
+        
+        cursor.close()
+        return {
+            'carrera_id': carrera_id,
+            'total_estudiantes': len(estudiantes_detalle),
+            'estudiantes': estudiantes_detalle
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
+@router.get("/carrera/{carrera_id}/lista-simple")
+def obtener_lista_estudiantes_carrera(carrera_id: int, db=Depends(get_db)):
+    """
+    Obtiene lista simplificada de estudiantes por carrera 
+    (para dropdowns o listados rápidos)
+    """
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT e.estudiante_id, e.nombre, e.codigo_estudiante,
+                   e.promedio_general, e.estado_academico
+            FROM sira.estudiante e
+            WHERE e.carrera_id = %s
+            ORDER BY e.nombre
+        """, (carrera_id,))
+        
+        estudiantes = cursor.fetchall()
+        cursor.close()
+        return estudiantes
+    except Exception as e:
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
+@router.get("/carrera/{carrera_id}/estadisticas")
+def obtener_estadisticas_carrera(carrera_id: int, db=Depends(get_db)):
+    """
+    Obtiene estadísticas generales de una carrera:
+    - Total de estudiantes
+    - Promedio general
+    - Distribución de estados académicos
+    - Tasas de aprobación/reprobación
+    """
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT 
+                COUNT(DISTINCT e.estudiante_id) as total_estudiantes,
+                COUNT(DISTINCT CASE WHEN e.estado_academico = 'excelente' THEN e.estudiante_id END) as excelentes,
+                COUNT(DISTINCT CASE WHEN e.estado_academico = 'bueno' THEN e.estudiante_id END) as buenos,
+                COUNT(DISTINCT CASE WHEN e.estado_academico = 'regular' THEN e.estudiante_id END) as regulares,
+                COUNT(DISTINCT CASE WHEN e.estado_academico = 'riesgo' THEN e.estudiante_id END) as en_riesgo,
+                AVG(e.promedio_general) as promedio_carrera,
+                COUNT(c.calificacion_id) as total_calificaciones,
+                COUNT(CASE WHEN c.estado = 'aprobado' THEN 1 END) as calificaciones_aprobadas,
+                COUNT(CASE WHEN c.estado = 'reprobado' THEN 1 END) as calificaciones_reprobadas,
+                ROUND(COUNT(CASE WHEN c.estado = 'aprobado' THEN 1 END) * 100.0 / COUNT(c.calificacion_id), 2) as tasa_aprobacion
+            FROM sira.estudiante e
+            LEFT JOIN sira.calificacion c ON e.estudiante_id = c.estudiante_id
+            WHERE e.carrera_id = %s
+        """, (carrera_id,))
+        
+        stats = cursor.fetchone()
+        cursor.close()
+        
+        if not stats:
+            raise HTTPException(status_code=404, detail="Carrera no encontrada")
+        
+        return stats
+    except HTTPException:
+        raise
+    except Exception as e:
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")

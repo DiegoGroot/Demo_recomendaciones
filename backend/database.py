@@ -27,9 +27,14 @@ def get_pool():
     return connection_pool
 
 def get_db():
-    pool = get_pool()
-    conn = pool.get_connection()
+    db = mysql.connector.connect(
+        host=os.getenv("DB_HOST", "localhost"),
+        user=os.getenv("DB_USER", "diego_user"),
+        password=os.getenv("DB_PASSWORD", "Diego123*"),
+        database=os.getenv("DB_NAME", "sira"),
+        port=os.getenv("DB_PORT", 3306)
+    )
     try:
-        yield conn
+        yield db
     finally:
-        conn.close()
+        db.close()

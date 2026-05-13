@@ -29,8 +29,7 @@ class Calificacion {
     this.numParciales = 2,
   });
 
-  factory Calificacion.fromJson(Map<String, dynamic> json) {
-    return Calificacion(
+  factory Calificacion.fromJson(Map<String, dynamic> json) => Calificacion(
       calificacionId: json['calificacion_id'] as int?,
       estudianteId: json['estudiante_id'] as int,
       materiaId: json['materia_id'] as int,
@@ -45,10 +44,8 @@ class Calificacion {
       observaciones: json['observaciones'] as String?,
       numParciales: (json['num_parciales'] as int?) ?? 2,
     );
-  }
 
-  Map<String, dynamic> toJson() {
-    return {
+  Map<String, dynamic> toJson() => {
       'estudiante_id': estudianteId,
       'materia_id': materiaId,
       if (notaParcial1 != null) 'parcial1': notaParcial1,
@@ -60,5 +57,4 @@ class Calificacion {
       if (observaciones != null) 'observaciones': observaciones,
       'num_parciales': numParciales,
     };
-  }
 }

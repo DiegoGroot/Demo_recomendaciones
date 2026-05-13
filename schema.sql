@@ -1,4 +1,3 @@
-
 -- ==========================================================
 -- SIRA / proyecto_recomendaciones
 -- Rediseño de base de datos MySQL
@@ -220,6 +219,8 @@ CREATE TABLE calificacion (
   nota_final DECIMAL(4,2) NOT NULL,
   estado ENUM('en_curso','aprobado','reprobado') NOT NULL DEFAULT 'en_curso',
   semestre TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  observaciones TEXT NULL,
+  num_parciales TINYINT UNSIGNED NOT NULL DEFAULT 2,
   creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   actualizado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uk_calificacion_inscripcion (inscripcion_id),
@@ -239,10 +240,10 @@ CREATE TABLE calificacion (
     ON UPDATE CASCADE
     ON DELETE RESTRICT,
   CONSTRAINT chk_calificacion_rango CHECK (
-    (nota_parcial1 IS NULL OR nota_parcial1 BETWEEN 0 AND 5) AND
-    (nota_parcial2 IS NULL OR nota_parcial2 BETWEEN 0 AND 5) AND
-    (nota_parcial3 IS NULL OR nota_parcial3 BETWEEN 0 AND 5) AND
-    (nota_final BETWEEN 0 AND 5)
+    (nota_parcial1 IS NULL OR (nota_parcial1 >= 0 AND nota_parcial1 <= 10)) AND
+    (nota_parcial2 IS NULL OR (nota_parcial2 >= 0 AND nota_parcial2 <= 10)) AND
+    (nota_parcial3 IS NULL OR (nota_parcial3 >= 0 AND nota_parcial3 <= 10)) AND
+    (nota_final >= 0 AND nota_final <= 10)
   )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -416,7 +417,11 @@ CREATE TABLE respuesta_estudiante (
   opcion_id INT UNSIGNED NOT NULL,
   es_correcta BOOLEAN NOT NULL DEFAULT FALSE,
   respuesta_texto TEXT NULL,
+  calificacion_estrellas TINYINT UNSIGNED NULL CHECK (calificacion_estrellas BETWEEN 1 AND 5),
+  retroalimentacion_maestro TEXT NULL,
+  fecha_retroalimentacion DATETIME NULL,
   creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  actualizado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_respuesta_intento (intento_id),
   KEY idx_respuesta_pregunta (pregunta_id),
   CONSTRAINT fk_respuesta_intento
@@ -583,7 +588,7 @@ END$$
 
 DELIMITER ;
 
-LTER TABLE estudiante
+ALTER TABLE estudiante
     ADD COLUMN IF NOT EXISTS fecha_nacimiento DATE NULL,
     ADD COLUMN IF NOT EXISTS sexo VARCHAR(20) NULL,
     ADD COLUMN IF NOT EXISTS nacionalidad VARCHAR(60) NULL,
@@ -716,15 +721,24 @@ ON DUPLICATE KEY UPDATE descripcion=VALUES(descripcion);
 -- ==========================================================
 
 -- Agregar campos demográficos a tabla estudiante
-ALTER TABLE estudiante ADD COLUMN sexo VARCHAR(20) NULL AFTER edad;
-ALTER TABLE estudiante ADD COLUMN nacionalidad VARCHAR(60) NULL AFTER sexo;
-ALTER TABLE estudiante ADD COLUMN direccion TEXT NULL AFTER nacionalidad;
-ALTER TABLE estudiante ADD COLUMN matricula VARCHAR(30) NULL UNIQUE AFTER direccion;
-ALTER TABLE estudiante ADD COLUMN modalidad VARCHAR(30) NULL AFTER matricula;
+ALTER TABLE estudiante ADD COLUMN IF NOT EXISTS sexo VARCHAR(20) NULL AFTER edad;
+ALTER TABLE estudiante ADD COLUMN IF NOT EXISTS nacionalidad VARCHAR(60) NULL AFTER sexo;
+ALTER TABLE estudiante ADD COLUMN IF NOT EXISTS direccion TEXT NULL AFTER nacionalidad;
+ALTER TABLE estudiante ADD COLUMN IF NOT EXISTS matricula VARCHAR(30) NULL UNIQUE AFTER direccion;
+ALTER TABLE estudiante ADD COLUMN IF NOT EXISTS modalidad VARCHAR(30) NULL AFTER matricula;
 
 -- Agregar campos demográficos a tabla maestro
-ALTER TABLE maestro ADD COLUMN sexo VARCHAR(20) NULL AFTER especialidad;
-ALTER TABLE maestro ADD COLUMN nacionalidad VARCHAR(60) NULL AFTER sexo;
-ALTER TABLE maestro ADD COLUMN direccion TEXT NULL AFTER nacionalidad;
-ALTER TABLE maestro ADD COLUMN fecha_nacimiento DATE NULL AFTER direccion;
-ALTER TABLE maestro ADD COLUMN edad TINYINT UNSIGNED NULL AFTER fecha_nacimiento;
+ALTER TABLE maestro ADD COLUMN IF NOT EXISTS sexo VARCHAR(20) NULL AFTER especialidad;
+ALTER TABLE maestro ADD COLUMN IF NOT EXISTS nacionalidad VARCHAR(60) NULL AFTER sexo;
+ALTER TABLE maestro ADD COLUMN IF NOT EXISTS direccion TEXT NULL AFTER nacionalidad;
+ALTER TABLE maestro ADD COLUMN IF NOT EXISTS fecha_nacimiento DATE NULL AFTER direccion;
+ALTER TABLE maestro ADD COLUMN IF NOT EXISTS edad TINYINT UNSIGNED NULL AFTER fecha_nacimiento;
+
+-- Para guardar las estrellas y el comentario final en la recomendación
+ALTER TABLE recomendacion 
+ADD COLUMN IF NOT EXISTS estrellas_docente INT DEFAULT 0,
+ADD COLUMN IF NOT EXISTS retroalimentacion_docente TEXT;
+
+-- Para guardar el comentario individual del maestro en cada respuesta del alumno
+ALTER TABLE respuesta_estudiante 
+ADD COLUMN IF NOT EXISTS retroalimentacion_maestro TEXT;

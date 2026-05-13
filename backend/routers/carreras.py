@@ -218,3 +218,79 @@ def importar_mapa_curricular(carrera_id: int, data: ImportarMapaSchema, db=Depen
         db.rollback()
         cursor.close()
         raise HTTPException(status_code=500, detail=f"Error al procesar PDF: {str(e)}")
+
+
+# ====================================================================
+# NUEVO: CARRERA CON ESTUDIANTES (Para Progreso por Carrera)
+# ====================================================================
+
+@router.get("/{carrera_id}/con-estudiantes")
+def obtener_carrera_con_estudiantes(carrera_id: int, db=Depends(get_db)):
+    """Obtiene información de carrera + lista de todos sus estudiantes"""
+    cursor = db.cursor(dictionary=True)
+    try:
+        # Obtener carrera
+        cursor.execute("""
+            SELECT carrera_id, codigo, nombre, descripcion, duracion_anios, estado, creado_en
+            FROM sira.carrera WHERE carrera_id = %s
+        """, (carrera_id,))
+        carrera = cursor.fetchone()
+        
+        if not carrera:
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Carrera no encontrada")
+        
+        # Obtener estudiantes de la carrera
+        cursor.execute("""
+            SELECT e.estudiante_id, e.nombre, e.codigo_estudiante, 
+                   e.promedio_general, e.estado_academico, e.creado_en,
+                   COUNT(DISTINCT c.calificacion_id) as total_calificaciones,
+                   COUNT(DISTINCT CASE WHEN c.estado = 'aprobado' THEN c.calificacion_id END) as aprobadas,
+                   COUNT(DISTINCT CASE WHEN c.estado = 'reprobado' THEN c.calificacion_id END) as reprobadas
+            FROM sira.estudiante e
+            LEFT JOIN sira.calificacion c ON e.estudiante_id = c.estudiante_id
+            WHERE e.carrera_id = %s
+            GROUP BY e.estudiante_id
+            ORDER BY e.promedio_general DESC, e.nombre
+        """, (carrera_id,))
+        
+        estudiantes = cursor.fetchall()
+        cursor.close()
+        
+        return {
+            **carrera,
+            'total_estudiantes': len(estudiantes),
+            'estudiantes': estudiantes
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
+@router.get("/listar-con-estudiantes")
+def listar_carreras_con_estudiantes(db=Depends(get_db)):
+    """Obtiene lista de todas las carreras con cantidad de estudiantes por carrera"""
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT c.carrera_id, c.codigo, c.nombre, c.descripcion, c.duracion_anios, c.estado,
+                   COUNT(DISTINCT e.estudiante_id) as total_estudiantes,
+                   AVG(e.promedio_general) as promedio_carrera,
+                   COUNT(DISTINCT CASE WHEN e.estado_academico = 'excelente' THEN e.estudiante_id END) as excelentes,
+                   COUNT(DISTINCT CASE WHEN e.estado_academico = 'bueno' THEN e.estudiante_id END) as buenos,
+                   COUNT(DISTINCT CASE WHEN e.estado_academico = 'regular' THEN e.estudiante_id END) as regulares,
+                   COUNT(DISTINCT CASE WHEN e.estado_academico = 'riesgo' THEN e.estudiante_id END) as en_riesgo
+            FROM sira.carrera c
+            LEFT JOIN sira.estudiante e ON c.carrera_id = e.carrera_id
+            GROUP BY c.carrera_id
+            ORDER BY c.nombre
+        """)
+        
+        result = cursor.fetchall()
+        cursor.close()
+        return result
+    except Exception as e:
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")

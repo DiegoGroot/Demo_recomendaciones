@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/calificacion.dart';
+import '../models/carrera.dart';
 import '../models/estudiante.dart';
 import '../models/materia.dart';
 import '../services/api_service.dart';
@@ -18,6 +19,7 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
   List<Calificacion> _cals = [];
   List<Estudiante> _estudiantes = [];
   List<Materia> _materias = [];
+  List<Carrera> _carreras = [];
   String _busqueda = '';
 
   @override
@@ -33,12 +35,14 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
         ApiService.getCalificaciones(),
         ApiService.getEstudiantes(),
         ApiService.getMaterias(),
+        ApiService.getCarreras(),
       ]);
       if (!mounted) return;
       setState(() {
         _cals        = r[0] as List<Calificacion>;
         _estudiantes = r[1] as List<Estudiante>;
         _materias    = r[2] as List<Materia>;
+        _carreras    = r[3] as List<Carrera>;
         _loading     = false;
       });
     } catch (e) {
@@ -67,35 +71,57 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
     catch (_) { return 'Mat. $id'; }
   }
 
-  /// FIX: devuelve solo las materias de la carrera del estudiante seleccionado.
-  /// Si el estudiante no tiene carrera asignada, muestra todas.
-  List<Materia> _materiasParaEstudiante(int? estudianteId) {
-    if (estudianteId == null) return _materias;
+  Estudiante? _estudiantePorId(int? estudianteId) {
+    if (estudianteId == null) return null;
     try {
-      final est = _estudiantes.firstWhere((e) => e.estudianteId == estudianteId);
-      if (est.carreraId == null) return _materias;
-      final filtradas = _materias.where((m) => m.carreraId == est.carreraId).toList();
-      return filtradas.isNotEmpty ? filtradas : _materias;
+      return _estudiantes.firstWhere((e) => e.estudianteId == estudianteId);
     } catch (_) {
-      return _materias;
+      return null;
     }
   }
 
-  Future<void> _generarRecomendacion(Calificacion cal) async {
-    if (cal.calificacionId == null) return;
+  String _nombreCarrera(int? carreraId) {
+    if (carreraId == null) return 'Sin carrera';
     try {
-      await ApiService.generarRecomendacion(cal.calificacionId!);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('✅ Recomendación generada correctamente'),
-          backgroundColor: Colors.green));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Error al generar recomendación: $e'),
-          backgroundColor: Colors.red));
+      return _carreras.firstWhere((c) => c.carreraId == carreraId).nombre ?? 'Carrera $carreraId';
+    } catch (_) {
+      return 'Carrera $carreraId';
     }
   }
+
+  /// Devuelve solo materias de la carrera y semestre actual del estudiante.
+  /// Ejemplo: si el alumno está en Ingeniería en Sistemas, semestre 1,
+  /// solo verá materias de esa carrera y ese semestre.
+  List<Materia> _materiasParaEstudiante(int? estudianteId) {
+    final est = _estudiantePorId(estudianteId);
+    if (est == null) return _materias;
+
+    final carreraId = est.carreraId;
+    final semestre = est.semestreActual ?? 1;
+
+    var filtradas = _materias.where((m) {
+      final mismaCarrera = carreraId == null || m.carreraId == carreraId;
+      final mismoSemestre = m.semestre == semestre;
+      return mismaCarrera && mismoSemestre;
+    }).toList();
+
+    // Respaldo: si esa carrera no tiene materias capturadas para ese semestre,
+    // muestra todas las materias de la carrera para no dejar el formulario vacío.
+    if (filtradas.isEmpty && carreraId != null) {
+      filtradas = _materias.where((m) => m.carreraId == carreraId).toList();
+    }
+
+    return filtradas;
+  }
+
+  String _textoMateriasDisponibles(int? estudianteId, int total) {
+    final est = _estudiantePorId(estudianteId);
+    if (est == null) return '$total materia(s) disponibles';
+    final carrera = _nombreCarrera(est.carreraId);
+    final semestre = est.semestreActual ?? 1;
+    return '$total materia(s) de $carrera · semestre $semestre';
+  }
+
 
   void _confirmDelete(Calificacion cal) {
     showDialog(
@@ -164,15 +190,17 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Text(cal == null ? 'Nueva Calificación' : 'Editar Calificación',
               style: const TextStyle(fontWeight: FontWeight.bold)),
-          content: SizedBox(
-            width: 480,
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520, maxHeight: 620),
             child: SingleChildScrollView(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
 
                 // ── Estudiante ──────────────────────────────────────────────
                 _label('Estudiante *'),
                 DropdownButtonFormField<int>(
-                  initialValue: estId,
+                  value: estId,
+                  isExpanded: true,
+                  menuMaxHeight: 280,
                   decoration: _deco('Selecciona estudiante', Icons.person),
                   items: _estudiantes
                       .map((e) => DropdownMenuItem(
@@ -204,14 +232,20 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                     child: Row(children: [
                       Icon(Icons.info_outline, size: 13, color: Colors.indigo.shade400),
                       const SizedBox(width: 4),
-                      Text(
-                        '${materiasDisponibles.length} materia(s) disponibles para este programa',
-                        style: TextStyle(fontSize: 11, color: Colors.indigo.shade400),
+                      Expanded(
+                        child: Text(
+                          _textoMateriasDisponibles(estId, materiasDisponibles.length),
+                          style: TextStyle(fontSize: 11, color: Colors.indigo.shade400),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ]),
                   ),
                 DropdownButtonFormField<int>(
-                  initialValue: materiasDisponibles.any((m) => m.materiaId == matId) ? matId : null,
+                  value: materiasDisponibles.any((m) => m.materiaId == matId) ? matId : null,
+                  isExpanded: true,
+                  menuMaxHeight: 280,
                   decoration: _deco('Selecciona materia', Icons.book),
                   items: materiasDisponibles
                       .map((m) => DropdownMenuItem(
@@ -225,7 +259,8 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                 // ── Número de parciales ─────────────────────────────────────
                 _label('Número de Parciales'),
                 DropdownButtonFormField<int>(
-                  initialValue: numParciales,
+                  value: numParciales,
+                  isExpanded: true,
                   decoration: _deco('Parciales de la materia', Icons.format_list_numbered),
                   items: const [
                     DropdownMenuItem(value: 1, child: Text('1 Parcial')),
@@ -274,31 +309,33 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                // ── Nota Final y Semestre ───────────────────────────────────
-                Row(children: [
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    _label('Nota Final *'),
-                    _numField(fnCtrl, 'ej: 8.0'),
-                  ])),
-                  const SizedBox(width: 10),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    _label('Semestre'),
-                    _numField(semCtrl, 'ej: 1', isInt: true),
-                  ])),
-                ]),
+                // ── Nota Final (Calculada Automáticamente) ──────────────────────
+                _label('Nota Final (Calculada o Manual)'),
+                _numField(fnCtrl, 'Se calcula automáticamente del promedio'),
                 const SizedBox(height: 12),
 
-                // ── Estado ─────────────────────────────────────────────────
-                _label('Estado'),
-                DropdownButtonFormField<String>(
-                  initialValue: estado,
-                  decoration: _deco('Estado', Icons.info_outline),
-                  items: const [
-                    DropdownMenuItem(value: 'en_curso',   child: Text('En curso')),
-                    DropdownMenuItem(value: 'aprobado',   child: Text('✅ Aprobado')),
-                    DropdownMenuItem(value: 'reprobado',  child: Text('❌ Reprobado')),
-                  ],
-                  onChanged: (v) => setS(() => estado = v ?? estado),
+                // ── Semestre ─────────────────────────────────────────────────
+                _label('Semestre'),
+                _numField(semCtrl, 'ej: 1', isInt: true),
+                const SizedBox(height: 12),
+
+                // ── Estado (Calculado Automáticamente) ──────────────────────
+                _label('Estado (Automático)'),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: _calcularEstadoColor(fnCtrl.text).withValues(alpha: 0.1),
+                    border: Border.all(color: _calcularEstadoColor(fnCtrl.text)),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    _calcularEstado(fnCtrl.text),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: _calcularEstadoColor(fnCtrl.text),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 12),
 
@@ -336,24 +373,28 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
               onPressed: saving
                   ? null
                   : () async {
-                      if (estId == null || matId == null || fnCtrl.text.trim().isEmpty) {
+                      if (estId == null || matId == null) {
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                            content: Text('Estudiante, materia y nota final son obligatorios'),
+                            content: Text('Estudiante y materia son obligatorios'),
                             backgroundColor: Colors.red));
                         return;
                       }
 
-                      final notaFinal = double.tryParse(fnCtrl.text);
-                      if (notaFinal == null || notaFinal < 0 || notaFinal > 10) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                            content: Text('La nota final debe estar entre 0 y 10'),
-                            backgroundColor: Colors.red));
-                        return;
-                      }
-
+                      // Validar parciales
                       final p1 = double.tryParse(p1Ctrl.text);
                       final p2 = double.tryParse(p2Ctrl.text);
                       final p3 = double.tryParse(p3Ctrl.text);
+                      
+                      // Al menos un parcial debe tener valor
+                      final parcialesLlenados = [p1, p2, p3].where((n) => n != null).toList();
+                      if (parcialesLlenados.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            content: Text('Debe ingresar al menos un parcial'),
+                            backgroundColor: Colors.red));
+                        return;
+                      }
+
+                      // Validar que todos los parciales ingresados estén en rango
                       for (final nota in [p1, p2, p3]) {
                         if (nota != null && (nota < 0 || nota > 10)) {
                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -361,6 +402,20 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                               backgroundColor: Colors.red));
                           return;
                         }
+                      }
+
+                      // Calcular promedio si nota final está vacía
+                      double? notaFinal = double.tryParse(fnCtrl.text);
+                      if (fnCtrl.text.trim().isEmpty && parcialesLlenados.isNotEmpty) {
+                        // Calcular promedio
+                        notaFinal = parcialesLlenados.reduce((a, b) => a! + b!) / parcialesLlenados.length;
+                      }
+                      
+                      if (notaFinal != null && (notaFinal < 0 || notaFinal > 10)) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            content: Text('La nota final debe estar entre 0 y 10'),
+                            backgroundColor: Colors.red));
+                        return;
                       }
 
                       setS(() => saving = true);
@@ -371,9 +426,9 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
                           if (p1 != null) 'parcial1': p1,
                           if (numParciales >= 2 && p2 != null) 'parcial2': p2,
                           if (numParciales >= 3 && p3 != null) 'parcial3': p3,
-                          'nota_final': notaFinal,
+                          if (notaFinal != null) 'nota_final': notaFinal,
                           'semestre': int.tryParse(semCtrl.text) ?? 1,
-                          'estado': estado,
+                          'estado': _estadoBackend(notaFinal),
                           if (obsCtrl.text.trim().isNotEmpty) 'observaciones': obsCtrl.text.trim(),
                           'num_parciales': numParciales,
                         };
@@ -452,6 +507,27 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
     if (nota >= 8) return Colors.green.shade700;
     if (nota >= 6) return Colors.orange.shade700;
     return Colors.red.shade700;
+  }
+
+  String _estadoBackend(double? notaFinal) {
+    if (notaFinal == null) return 'en_curso';
+    return notaFinal >= 6.0 ? 'aprobado' : 'reprobado';
+  }
+
+  String _calcularEstado(String notaFinalStr) {
+    if (notaFinalStr.isEmpty) return 'En Proceso';
+    final notaFinal = double.tryParse(notaFinalStr);
+    if (notaFinal == null) return 'En Proceso';
+    if (notaFinal >= 6.0) return '✅ Aprobado';
+    return '❌ Reprobado';
+  }
+
+  Color _calcularEstadoColor(String notaFinalStr) {
+    if (notaFinalStr.isEmpty) return Colors.blue;
+    final notaFinal = double.tryParse(notaFinalStr);
+    if (notaFinal == null) return Colors.blue;
+    if (notaFinal >= 6.0) return Colors.green;
+    return Colors.red;
   }
 
   @override
@@ -597,13 +673,6 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
           ],
           const SizedBox(height: 10),
           Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-            if (c.estado == 'aprobado' || c.estado == 'reprobado')
-              TextButton.icon(
-                onPressed: () => _generarRecomendacion(c),
-                icon: Icon(Icons.lightbulb, size: 16, color: Colors.amber.shade700),
-                label: Text('Generar Rec.',
-                    style: TextStyle(fontSize: 12, color: Colors.amber.shade700)),
-              ),
             IconButton(
               icon: const Icon(Icons.edit, size: 18),
               onPressed: () => _showForm(c),
@@ -670,5 +739,11 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
         style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold),
       ),
     );
+  }
+}
+
+extension on double? {
+  double? operator /(int other) {
+    return null;
   }
 }
