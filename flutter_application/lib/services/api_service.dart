@@ -1,3 +1,4 @@
+// lib/services/api_service.dart
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../models/carrera.dart';
@@ -102,8 +103,6 @@ class ApiService {
         'contrasena': contrasena.trim(),
       }) as Map<String, dynamic>;
 
-
-
   static Future<Map<String, dynamic>> buscarCuentaRecuperacion({
     required String correo,
     String? tipo,
@@ -145,12 +144,9 @@ class ApiService {
           as Map<String, dynamic>;
 
   // ==================== MATERIAS ====================
-
   static Future<List<Materia>> getMaterias() async {
     final data = await _get('/materias') as List<dynamic>;
-    return data
-        .map((m) => Materia.fromJson(m as Map<String, dynamic>))
-        .toList();
+    return data.map((m) => Materia.fromJson(m as Map<String, dynamic>)).toList();
   }
 
   static Future<List<Materia>> getMateriasByCarrera(int carreraId) async {
@@ -168,7 +164,6 @@ class ApiService {
     final all = await getMateriasRaw();
     return all.where((m) => m['carrera_id'] == carreraId).toList();
   }
-
 
   static Future<List<Map<String, dynamic>>> getMateriasRawByCarreraYSemestre(
       int carreraId, int semestre) async {
@@ -283,8 +278,6 @@ class ApiService {
         'retroalimentacion_docente': feedback,
       });
 
-  // FIX: usa POST /recomendaciones (endpoint que sí existe)
-  // antes llamaba a /recomendaciones/crear-con-evaluacion que NO existe
   static Future<void> createRecomendacion(Recomendacion r) async =>
       await _post('/recomendaciones', r.toJson());
 
@@ -301,9 +294,7 @@ class ApiService {
   }) async {
     String path = '/evaluaciones';
     final params = <String>[];
-    if (recomendacionId != null) {
-      params.add('recomendacion_id=$recomendacionId');
-    }
+    if (recomendacionId != null) params.add('recomendacion_id=$recomendacionId');
     if (estado != null) params.add('estado=$estado');
     if (params.isNotEmpty) path += '?${params.join('&')}';
     final data = await _get(path) as List<dynamic>;
@@ -489,9 +480,9 @@ class ApiService {
 
   static Future<Map<String, dynamic>> marcarLikeRetroalimentacion(
       int respuestaId, bool liked) async {
-    return await _post('/evaluaciones/respuesta/$respuestaId/like-retroalimentacion', {
-      'liked': liked,
-    }) as Map<String, dynamic>;
+    return await _post(
+        '/evaluaciones/respuesta/$respuestaId/like-retroalimentacion',
+        {'liked': liked}) as Map<String, dynamic>;
   }
 
   static Future<Map<String, dynamic>> obtenerRetroalimentacion(

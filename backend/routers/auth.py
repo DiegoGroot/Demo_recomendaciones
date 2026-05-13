@@ -159,7 +159,6 @@ def login_admin(data: LoginData, db=Depends(get_db)):
         if not admin:
             raise HTTPException(status_code=401, detail='Correo o contraseña incorrectos')
 
-        # Se devuelven ambos nombres para que funcione con pantallas antiguas y nuevas.
         return {
             'message': 'Login exitoso',
             'rol': 'superAdmin',

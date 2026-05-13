@@ -6,6 +6,7 @@ from mysql.connector import errors as mysql_errors
 
 router = APIRouter()
 
+
 class EstudianteCreate(BaseModel):
     nombre: str
     correo: str
@@ -20,6 +21,7 @@ class EstudianteCreate(BaseModel):
     semestre_actual: Optional[int] = 1
     materias_ids: Optional[List[int]] = None
 
+
 class EstudianteUpdate(BaseModel):
     nombre: Optional[str] = None
     correo: Optional[str] = None
@@ -33,6 +35,7 @@ class EstudianteUpdate(BaseModel):
     modalidad: Optional[str] = None
     semestre_actual: Optional[int] = None
     materias_ids: Optional[List[int]] = None
+
 
 class LoginData(BaseModel):
     correo: str
@@ -145,9 +148,9 @@ def _guardar_inscripciones(cursor, estudiante_id: int, carrera_id: int, semestre
             campos['estado'] = 'activa'
 
         col_names = ", ".join(campos.keys())
-        placeholders = ", ".join(["%s"] * len(campos))
+        placeholders_ins = ", ".join(["%s"] * len(campos))
         updates = ", ".join([f"{c}=VALUES({c})" for c in campos.keys() if c not in ('estudiante_id', 'materia_id')])
-        sql = f"INSERT INTO sira.inscripcion ({col_names}) VALUES ({placeholders})"
+        sql = f"INSERT INTO sira.inscripcion ({col_names}) VALUES ({placeholders_ins})"
         if updates:
             sql += f" ON DUPLICATE KEY UPDATE {updates}"
         cursor.execute(sql, list(campos.values()))
@@ -305,7 +308,12 @@ def crear_estudiante(data: EstudianteCreate, db=Depends(get_db)):
             estudiante['materias_inscritas'] = _materias_inscritas(cursor, id_creado)
             estudiante['materias_inscritas_count'] = materias_inscritas_count
         cursor.close()
-        return estudiante or {"estudiante_id": id_creado, "nombre": data.nombre, "correo": data.correo, "materias_inscritas_count": materias_inscritas_count}
+        return estudiante or {
+            "estudiante_id": id_creado,
+            "nombre": data.nombre,
+            "correo": data.correo,
+            "materias_inscritas_count": materias_inscritas_count,
+        }
     except mysql_errors.IntegrityError as e:
         db.rollback()
         cursor.close()
@@ -363,6 +371,8 @@ def actualizar_estudiante(estudiante_id: int, data: EstudianteUpdate, db=Depends
         cols = _columnas_existentes(cursor)
 
         raw = data.model_dump(exclude_unset=True)
+        materias_ids = raw.pop('materias_ids', None)
+
         if 'nacionalidad' in raw:
             raw['nacionalidad'] = _normalizar_nacionalidades(raw.get('nacionalidad'))
         for key in ['nombre', 'correo', 'contrasena', 'fecha_nacimiento', 'sexo', 'direccion', 'matricula', 'modalidad']:
@@ -411,17 +421,17 @@ def actualizar_estudiante(estudiante_id: int, data: EstudianteUpdate, db=Depends
         # de ese estudiante para que coincidan con su selección actual.
         if materias_ids is not None:
             carrera_actual = campos.get('carrera_id')
-            semestre_actual = campos.get('semestre_actual')
-            if carrera_actual is None or semestre_actual is None:
+            semestre_act = campos.get('semestre_actual')
+            if carrera_actual is None or semestre_act is None:
                 cursor.execute(
                     "SELECT carrera_id, semestre_actual FROM sira.estudiante WHERE estudiante_id = %s",
                     (estudiante_id,)
                 )
                 row_est = cursor.fetchone() or {}
                 carrera_actual = carrera_actual or row_est.get('carrera_id')
-                semestre_actual = semestre_actual or row_est.get('semestre_actual') or 1
+                semestre_act = semestre_act or row_est.get('semestre_actual') or 1
             cursor.execute("DELETE FROM sira.inscripcion WHERE estudiante_id = %s", (estudiante_id,))
-            _guardar_inscripciones(cursor, estudiante_id, int(carrera_actual), int(semestre_actual or 1), materias_ids)
+            _guardar_inscripciones(cursor, estudiante_id, int(carrera_actual), int(semestre_act or 1), materias_ids)
 
         db.commit()
 
@@ -606,7 +616,7 @@ def obtener_resultados_estudiante(estudiante_id: int, db=Depends(get_db)):
         return {
             "promedio": prom['promedio'],
             "recomendaciones_activas": recs['total'],
-            "evaluaciones_completadas": evals['total']
+            "evaluaciones_completadas": evals['total'],
         }
     except Exception as e:
         cursor.close()
