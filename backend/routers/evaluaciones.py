@@ -90,10 +90,11 @@ def _columnas_respuesta(cursor) -> dict:
         }
 
 def _col_texto(info: dict) -> str:
-    if info['tiene_texto']: return 'texto_respuesta'
+    # La columna real en la DB es 'respuesta_texto'
     if info['tiene_respuesta_texto']: return 'respuesta_texto'
+    if info['tiene_texto']: return 'texto_respuesta'
     if info['tiene_respuesta']: return 'respuesta'
-    return 'texto_respuesta'
+    return 'respuesta_texto'
 
 def _col_id_estudiante(info: dict) -> Optional[str]:
     if info['tiene_ee_id']: return 'evaluacion_estudiante_id'

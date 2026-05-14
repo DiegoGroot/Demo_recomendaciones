@@ -19,13 +19,13 @@ class RegistroAdminCreate(BaseModel):
 
 class RecuperarBuscarCreate(BaseModel):
     correo: str
-    tipo: Optional[str] = None  # 'admin', 'estudiante' o None para buscar en ambos
+    tipo: Optional[str] = None
 
 
 class RecuperarCambiarCreate(BaseModel):
     correo: str
     nueva_contrasena: str
-    tipo: Optional[str] = None  # 'admin', 'estudiante' o None para buscar en ambos
+    tipo: Optional[str] = None
 
 
 def _limpiar(valor: Optional[str]) -> str:
@@ -39,15 +39,14 @@ def _correo(valor: Optional[str]) -> str:
 def _asegurar_rol(cursor, nombre: str, descripcion: str) -> int:
     nombre_limpio = _limpiar(nombre).lower()
     cursor.execute(
-        "SELECT rol_id FROM sira.rol WHERE LOWER(TRIM(nombre)) = %s LIMIT 1",
+        "SELECT rol_id FROM rol WHERE LOWER(TRIM(nombre)) = %s LIMIT 1",
         (nombre_limpio,),
     )
     row = cursor.fetchone()
     if row:
         return row['rol_id'] if isinstance(row, dict) else row[0]
-
     cursor.execute(
-        "INSERT INTO sira.rol (nombre, descripcion) VALUES (%s, %s)",
+        "INSERT INTO rol (nombre, descripcion) VALUES (%s, %s)",
         (nombre_limpio, descripcion),
     )
     return cursor.lastrowid
@@ -68,8 +67,8 @@ def _buscar_admin(cursor, correo: str, contrasena: Optional[str] = None):
             u.rol_id,
             u.estado,
             r.nombre AS rol
-        FROM sira.usuario u
-        JOIN sira.rol r ON u.rol_id = r.rol_id
+        FROM usuario u
+        JOIN rol r ON u.rol_id = r.rol_id
         WHERE LOWER(TRIM(u.correo)) = %s
           {filtro_pass}
           AND LOWER(TRIM(r.nombre)) IN ('administrador', 'super_admin', 'admin')
@@ -86,19 +85,28 @@ def _buscar_estudiante(cursor, correo: str, contrasena: Optional[str] = None):
         filtro_pass = "AND e.contrasena = %s"
         params.append(contrasena)
 
+    # Obtener columnas reales para no fallar si la DB difiere del modelo
+    cursor.execute("""
+        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'estudiante'
+    """)
+    cols_est = {row['COLUMN_NAME'] for row in cursor.fetchall()}
+
+    extras = ""
+    for col in ['codigo_estudiante', 'promedio_general', 'estado_academico']:
+        if col in cols_est:
+            extras += f", e.{col}"
+
     cursor.execute(f"""
         SELECT
             e.estudiante_id,
             e.nombre,
             e.correo,
             e.carrera_id,
-            c.nombre AS carrera,
-            e.semestre_actual,
-            e.sexo,
-            e.nacionalidad,
-            e.modalidad
-        FROM sira.estudiante e
-        LEFT JOIN sira.carrera c ON e.carrera_id = c.carrera_id
+            c.nombre AS carrera
+            {extras}
+        FROM estudiante e
+        LEFT JOIN carrera c ON e.carrera_id = c.carrera_id
         WHERE LOWER(TRIM(e.correo)) = %s
           {filtro_pass}
         LIMIT 1
@@ -149,7 +157,7 @@ def login_admin(data: LoginData, db=Depends(get_db)):
 
         if admin:
             cursor.execute(
-                "UPDATE sira.usuario SET ultimo_acceso = NOW() WHERE usuario_id = %s",
+                "UPDATE usuario SET ultimo_acceso = NOW() WHERE usuario_id = %s",
                 (admin['usuario_id'],),
             )
             db.commit()
@@ -183,12 +191,11 @@ def registrar_admin(data: RegistroAdminCreate, db=Depends(get_db)):
 
         if not nombre or not correo or not contrasena:
             raise HTTPException(status_code=400, detail='Nombre, correo y contraseña son obligatorios')
-
         if len(contrasena) < 4:
             raise HTTPException(status_code=400, detail='La contraseña debe tener al menos 4 caracteres')
 
         cursor.execute(
-            'SELECT usuario_id FROM sira.usuario WHERE LOWER(TRIM(correo)) = %s LIMIT 1',
+            'SELECT usuario_id FROM usuario WHERE LOWER(TRIM(correo)) = %s LIMIT 1',
             (correo,),
         )
         if cursor.fetchone():
@@ -196,7 +203,7 @@ def registrar_admin(data: RegistroAdminCreate, db=Depends(get_db)):
 
         rol_id = _asegurar_rol(cursor, 'administrador', 'Administrador del sistema')
         cursor.execute("""
-            INSERT INTO sira.usuario (nombre, correo, contrasena, rol_id, estado)
+            INSERT INTO usuario (nombre, correo, contrasena, rol_id, estado)
             VALUES (%s, %s, %s, %s, 'activo')
         """, (nombre, correo, contrasena, rol_id))
         usuario_id = cursor.lastrowid
@@ -204,8 +211,8 @@ def registrar_admin(data: RegistroAdminCreate, db=Depends(get_db)):
 
         cursor.execute("""
             SELECT u.usuario_id, u.nombre, u.correo, r.nombre AS rol, u.estado
-            FROM sira.usuario u
-            JOIN sira.rol r ON u.rol_id = r.rol_id
+            FROM usuario u
+            JOIN rol r ON u.rol_id = r.rol_id
             WHERE u.usuario_id = %s
         """, (usuario_id,))
         admin = cursor.fetchone()
@@ -279,7 +286,6 @@ def cambiar_contrasena_recuperacion(data: RecuperarCambiarCreate, db=Depends(get
 
         if not correo or not nueva:
             raise HTTPException(status_code=400, detail='Correo y nueva contraseña son obligatorios')
-
         if len(nueva) < 4:
             raise HTTPException(status_code=400, detail='La contraseña debe tener al menos 4 caracteres')
 
@@ -288,7 +294,7 @@ def cambiar_contrasena_recuperacion(data: RecuperarCambiarCreate, db=Depends(get
             if not admin:
                 raise HTTPException(status_code=404, detail='No existe un administrador activo con ese correo')
             cursor.execute(
-                "UPDATE sira.usuario SET contrasena = %s WHERE usuario_id = %s",
+                "UPDATE usuario SET contrasena = %s WHERE usuario_id = %s",
                 (nueva, admin['usuario_id']),
             )
             db.commit()
@@ -300,7 +306,7 @@ def cambiar_contrasena_recuperacion(data: RecuperarCambiarCreate, db=Depends(get
             if not estudiante:
                 raise HTTPException(status_code=404, detail='No existe un estudiante con ese correo')
             cursor.execute(
-                "UPDATE sira.estudiante SET contrasena = %s WHERE estudiante_id = %s",
+                "UPDATE estudiante SET contrasena = %s WHERE estudiante_id = %s",
                 (nueva, estudiante['estudiante_id']),
             )
             db.commit()
@@ -310,7 +316,7 @@ def cambiar_contrasena_recuperacion(data: RecuperarCambiarCreate, db=Depends(get
         admin = _buscar_admin(cursor, correo)
         if admin:
             cursor.execute(
-                "UPDATE sira.usuario SET contrasena = %s WHERE usuario_id = %s",
+                "UPDATE usuario SET contrasena = %s WHERE usuario_id = %s",
                 (nueva, admin['usuario_id']),
             )
             db.commit()
@@ -320,7 +326,7 @@ def cambiar_contrasena_recuperacion(data: RecuperarCambiarCreate, db=Depends(get
         estudiante = _buscar_estudiante(cursor, correo)
         if estudiante:
             cursor.execute(
-                "UPDATE sira.estudiante SET contrasena = %s WHERE estudiante_id = %s",
+                "UPDATE estudiante SET contrasena = %s WHERE estudiante_id = %s",
                 (nueva, estudiante['estudiante_id']),
             )
             db.commit()

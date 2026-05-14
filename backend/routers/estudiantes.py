@@ -13,12 +13,8 @@ class EstudianteCreate(BaseModel):
     contrasena: str
     carrera_id: Optional[int] = None
     fecha_nacimiento: Optional[str] = None
-    sexo: Optional[str] = None
-    nacionalidad: Optional[str] = None
-    direccion: Optional[str] = None
-    matricula: Optional[str] = None
-    modalidad: Optional[str] = None
-    semestre_actual: Optional[int] = 1
+    edad: Optional[int] = None
+    codigo_estudiante: Optional[str] = None
     materias_ids: Optional[List[int]] = None
 
 
@@ -28,12 +24,8 @@ class EstudianteUpdate(BaseModel):
     contrasena: Optional[str] = None
     carrera_id: Optional[int] = None
     fecha_nacimiento: Optional[str] = None
-    sexo: Optional[str] = None
-    nacionalidad: Optional[str] = None
-    direccion: Optional[str] = None
-    matricula: Optional[str] = None
-    modalidad: Optional[str] = None
-    semestre_actual: Optional[int] = None
+    edad: Optional[int] = None
+    codigo_estudiante: Optional[str] = None
     materias_ids: Optional[List[int]] = None
 
 
@@ -56,13 +48,7 @@ def _build_select(cols: set) -> str:
     base = "e.estudiante_id, e.nombre, e.correo, e.carrera_id, c.nombre as carrera, e.creado_en"
     opcionales = {
         'fecha_nacimiento': 'e.fecha_nacimiento',
-        'sexo': 'e.sexo',
-        'nacionalidad': 'e.nacionalidad',
-        'direccion': 'e.direccion',
-        'matricula': 'e.matricula',
-        'modalidad': 'e.modalidad',
         'edad': 'e.edad',
-        'semestre_actual': 'e.semestre_actual',
         'promedio_general': 'e.promedio_general',
         'estado_academico': 'e.estado_academico',
         'codigo_estudiante': 'e.codigo_estudiante',
@@ -87,14 +73,9 @@ def _anio_actual() -> int:
 
 
 def _guardar_inscripciones(cursor, estudiante_id: int, carrera_id: int, semestre_actual: int, materias_ids: Optional[List[int]]):
-    """Guarda las materias seleccionadas por el estudiante en la tabla inscripcion.
-    Si no llegan materias_ids, no crea inscripciones automáticamente porque el alumno
-    debe escoger las materias que realmente cursa.
-    """
     if not materias_ids:
         return 0
 
-    # Quitar duplicados conservando orden.
     materias_limpias = []
     vistos = set()
     for mid in materias_ids:
@@ -111,11 +92,10 @@ def _guardar_inscripciones(cursor, estudiante_id: int, carrera_id: int, semestre
 
     placeholders = ", ".join(["%s"] * len(materias_limpias))
     cursor.execute(f"""
-        SELECT materia_id, carrera_id, semestre, estado
-        FROM sira.materia
+        SELECT materia_id, carrera_id, semestre
+        FROM materia
         WHERE materia_id IN ({placeholders})
           AND carrera_id = %s
-          AND estado = 'activa'
     """, (*materias_limpias, carrera_id))
     materias_validas = cursor.fetchall()
     validas_ids = {int(m['materia_id']) for m in materias_validas}
@@ -137,9 +117,8 @@ def _guardar_inscripciones(cursor, estudiante_id: int, carrera_id: int, semestre
         campos = {
             'estudiante_id': estudiante_id,
             'materia_id': int(materia['materia_id']),
+            'semestre_cursado': semestre_materia,  # siempre requerido
         }
-        if 'semestre_cursado' in cols_inscripcion:
-            campos['semestre_cursado'] = semestre_materia
         if 'anio_academico' in cols_inscripcion:
             campos['anio_academico'] = anio
         if 'periodo' in cols_inscripcion:
@@ -150,7 +129,7 @@ def _guardar_inscripciones(cursor, estudiante_id: int, carrera_id: int, semestre
         col_names = ", ".join(campos.keys())
         placeholders_ins = ", ".join(["%s"] * len(campos))
         updates = ", ".join([f"{c}=VALUES({c})" for c in campos.keys() if c not in ('estudiante_id', 'materia_id')])
-        sql = f"INSERT INTO sira.inscripcion ({col_names}) VALUES ({placeholders_ins})"
+        sql = f"INSERT INTO inscripcion ({col_names}) VALUES ({placeholders_ins})"
         if updates:
             sql += f" ON DUPLICATE KEY UPDATE {updates}"
         cursor.execute(sql, list(campos.values()))
@@ -164,8 +143,8 @@ def _materias_inscritas(cursor, estudiante_id: int):
         cursor.execute("""
             SELECT i.inscripcion_id, i.materia_id, m.nombre AS materia_nombre,
                    m.codigo, m.semestre, i.estado
-            FROM sira.inscripcion i
-            JOIN sira.materia m ON i.materia_id = m.materia_id
+            FROM inscripcion i
+            JOIN materia m ON i.materia_id = m.materia_id
             WHERE i.estudiante_id = %s
             ORDER BY m.semestre, m.nombre
         """, (estudiante_id,))
@@ -198,20 +177,27 @@ def _normalizar_nacionalidades(valor: Optional[str]) -> Optional[str]:
     return ", ".join(partes) if partes else None
 
 
+# ─── LOGIN (ruta legacy mantenida por compatibilidad con el frontend antiguo) ──
 @router.post("/login")
 def login(data: LoginData, db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
     try:
+        correo = data.correo.strip().lower()
+        contrasena = data.contrasena.strip()
         cursor.execute("""
-            SELECT estudiante_id, nombre, correo, carrera_id
-            FROM sira.estudiante
-            WHERE correo = %s AND contrasena = %s
-        """, (data.correo, data.contrasena))
+            SELECT e.estudiante_id, e.nombre, e.correo, e.carrera_id,
+                   c.nombre AS carrera, e.semestre_actual,
+                   e.sexo, e.nacionalidad, e.modalidad
+            FROM estudiante e
+            LEFT JOIN carrera c ON e.carrera_id = c.carrera_id
+            WHERE LOWER(TRIM(e.correo)) = %s AND e.contrasena = %s
+            LIMIT 1
+        """, (correo, contrasena))
         user = cursor.fetchone()
         cursor.close()
         if not user:
             raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos")
-        return {"message": "Login exitoso", "estudiante": user, "rol": "estudiante"}
+        return {"message": "Login exitoso", "estudiante": user, "user": user, "rol": "estudiante"}
     except HTTPException:
         raise
     except Exception as e:
@@ -219,12 +205,13 @@ def login(data: LoginData, db=Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error en login: {str(e)}")
 
 
-# IMPORTANTE: /registro va antes de /{estudiante_id} para que FastAPI no lo confunda con un ID.
+# ─── REGISTRO ─────────────────────────────────────────────────────────────────
 @router.post("/registro")
 def registrar_estudiante(data: EstudianteCreate, db=Depends(get_db)):
     return crear_estudiante(data, db)
 
 
+# ─── CRUD ─────────────────────────────────────────────────────────────────────
 @router.get("")
 def listar_estudiantes(db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
@@ -233,8 +220,8 @@ def listar_estudiantes(db=Depends(get_db)):
         select = _build_select(cols)
         cursor.execute(f"""
             SELECT {select}
-            FROM sira.estudiante e
-            LEFT JOIN sira.carrera c ON e.carrera_id = c.carrera_id
+            FROM estudiante e
+            LEFT JOIN carrera c ON e.carrera_id = c.carrera_id
             ORDER BY e.nombre ASC
         """)
         result = cursor.fetchall()
@@ -249,7 +236,7 @@ def listar_estudiantes(db=Depends(get_db)):
 def crear_estudiante(data: EstudianteCreate, db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT estudiante_id FROM sira.estudiante WHERE correo = %s", (data.correo,))
+        cursor.execute("SELECT estudiante_id FROM estudiante WHERE correo = %s", (data.correo,))
         if cursor.fetchone():
             cursor.close()
             raise HTTPException(status_code=409, detail="El correo ya está registrado")
@@ -266,12 +253,8 @@ def crear_estudiante(data: EstudianteCreate, db=Depends(get_db)):
 
         opcionales = {
             'fecha_nacimiento': _limpiar_texto(data.fecha_nacimiento),
-            'sexo': _limpiar_texto(data.sexo),
-            'nacionalidad': _normalizar_nacionalidades(data.nacionalidad),
-            'direccion': _limpiar_texto(data.direccion),
-            'matricula': _limpiar_texto(data.matricula),
-            'modalidad': _limpiar_texto(data.modalidad),
-            'semestre_actual': data.semestre_actual,
+            'edad': data.edad,
+            'codigo_estudiante': _limpiar_texto(data.codigo_estudiante),
         }
 
         for col, val in opcionales.items():
@@ -281,17 +264,13 @@ def crear_estudiante(data: EstudianteCreate, db=Depends(get_db)):
         col_names = ", ".join(campos.keys())
         placeholders = ", ".join(["%s"] * len(campos))
         cursor.execute(
-            f"INSERT INTO sira.estudiante ({col_names}) VALUES ({placeholders})",
+            f"INSERT INTO estudiante ({col_names}) VALUES ({placeholders})",
             list(campos.values())
         )
         id_creado = cursor.lastrowid
 
         materias_inscritas_count = _guardar_inscripciones(
-            cursor,
-            id_creado,
-            carrera,
-            int(data.semestre_actual or 1),
-            data.materias_ids,
+            cursor, id_creado, carrera, 1, data.materias_ids,
         )
 
         db.commit()
@@ -299,8 +278,8 @@ def crear_estudiante(data: EstudianteCreate, db=Depends(get_db)):
         select = _build_select(cols)
         cursor.execute(f"""
             SELECT {select}
-            FROM sira.estudiante e
-            LEFT JOIN sira.carrera c ON e.carrera_id = c.carrera_id
+            FROM estudiante e
+            LEFT JOIN carrera c ON e.carrera_id = c.carrera_id
             WHERE e.estudiante_id = %s
         """, (id_creado,))
         estudiante = cursor.fetchone()
@@ -341,8 +320,8 @@ def obtener_estudiante(estudiante_id: int, db=Depends(get_db)):
         select = _build_select(cols)
         cursor.execute(f"""
             SELECT {select}
-            FROM sira.estudiante e
-            LEFT JOIN sira.carrera c ON e.carrera_id = c.carrera_id
+            FROM estudiante e
+            LEFT JOIN carrera c ON e.carrera_id = c.carrera_id
             WHERE e.estudiante_id = %s
         """, (estudiante_id,))
         row = cursor.fetchone()
@@ -363,28 +342,28 @@ def obtener_estudiante(estudiante_id: int, db=Depends(get_db)):
 def actualizar_estudiante(estudiante_id: int, data: EstudianteUpdate, db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT estudiante_id FROM sira.estudiante WHERE estudiante_id = %s", (estudiante_id,))
+        cursor.execute("SELECT estudiante_id FROM estudiante WHERE estudiante_id = %s", (estudiante_id,))
         if not cursor.fetchone():
             cursor.close()
             raise HTTPException(status_code=404, detail="Estudiante no encontrado")
 
         cols = _columnas_existentes(cursor)
-
         raw = data.model_dump(exclude_unset=True)
         materias_ids = raw.pop('materias_ids', None)
 
-        if 'nacionalidad' in raw:
-            raw['nacionalidad'] = _normalizar_nacionalidades(raw.get('nacionalidad'))
-        for key in ['nombre', 'correo', 'contrasena', 'fecha_nacimiento', 'sexo', 'direccion', 'matricula', 'modalidad']:
+        for key in ['nombre', 'correo', 'contrasena', 'fecha_nacimiento', 'codigo_estudiante']:
             if key in raw:
                 raw[key] = _limpiar_texto(raw.get(key))
 
-        # Permite limpiar campos enviando string vacío, pero no actualiza contraseña vacía.
+        campos_texto = {'nombre', 'correo', 'contrasena', 'fecha_nacimiento', 'codigo_estudiante'}
         campos = {}
         for k, v in raw.items():
             if k not in cols:
                 continue
             if k == 'contrasena' and not v:
+                continue
+            # Si es campo de texto y quedó None tras limpiar, no incluirlo (evita "Sin datos")
+            if k in campos_texto and v is None:
                 continue
             campos[k] = v
 
@@ -394,52 +373,39 @@ def actualizar_estudiante(estudiante_id: int, data: EstudianteUpdate, db=Depends
 
         if "correo" in campos and campos["correo"]:
             cursor.execute(
-                "SELECT estudiante_id FROM sira.estudiante WHERE correo = %s AND estudiante_id != %s",
+                "SELECT estudiante_id FROM estudiante WHERE correo = %s AND estudiante_id != %s",
                 (campos["correo"], estudiante_id)
             )
             if cursor.fetchone():
                 cursor.close()
                 raise HTTPException(status_code=409, detail="El correo ya está registrado por otro estudiante")
 
-        if "matricula" in campos and campos["matricula"]:
-            cursor.execute(
-                "SELECT estudiante_id FROM sira.estudiante WHERE matricula = %s AND estudiante_id != %s",
-                (campos["matricula"], estudiante_id)
-            )
-            if cursor.fetchone():
-                cursor.close()
-                raise HTTPException(status_code=409, detail="La matrícula ya está registrada por otro estudiante")
-
         if campos:
             set_clause = ", ".join([f"{k} = %s" for k in campos])
             cursor.execute(
-                f"UPDATE sira.estudiante SET {set_clause} WHERE estudiante_id = %s",
+                f"UPDATE estudiante SET {set_clause} WHERE estudiante_id = %s",
                 (*campos.values(), estudiante_id)
             )
 
-        # Si se mandan materias desde el formulario, reemplazamos las inscripciones activas
-        # de ese estudiante para que coincidan con su selección actual.
         if materias_ids is not None:
             carrera_actual = campos.get('carrera_id')
-            semestre_act = campos.get('semestre_actual')
-            if carrera_actual is None or semestre_act is None:
+            if carrera_actual is None:
                 cursor.execute(
-                    "SELECT carrera_id, semestre_actual FROM sira.estudiante WHERE estudiante_id = %s",
+                    "SELECT carrera_id FROM estudiante WHERE estudiante_id = %s",
                     (estudiante_id,)
                 )
                 row_est = cursor.fetchone() or {}
-                carrera_actual = carrera_actual or row_est.get('carrera_id')
-                semestre_act = semestre_act or row_est.get('semestre_actual') or 1
-            cursor.execute("DELETE FROM sira.inscripcion WHERE estudiante_id = %s", (estudiante_id,))
-            _guardar_inscripciones(cursor, estudiante_id, int(carrera_actual), int(semestre_act or 1), materias_ids)
+                carrera_actual = row_est.get('carrera_id')
+            cursor.execute("DELETE FROM inscripcion WHERE estudiante_id = %s", (estudiante_id,))
+            _guardar_inscripciones(cursor, estudiante_id, int(carrera_actual), 1, materias_ids)
 
         db.commit()
 
         select = _build_select(cols)
         cursor.execute(f"""
             SELECT {select}
-            FROM sira.estudiante e
-            LEFT JOIN sira.carrera c ON e.carrera_id = c.carrera_id
+            FROM estudiante e
+            LEFT JOIN carrera c ON e.carrera_id = c.carrera_id
             WHERE e.estudiante_id = %s
         """, (estudiante_id,))
         estudiante = cursor.fetchone()
@@ -466,11 +432,11 @@ def actualizar_estudiante(estudiante_id: int, data: EstudianteUpdate, db=Depends
 def eliminar_estudiante(estudiante_id: int, db=Depends(get_db)):
     cursor = db.cursor()
     try:
-        cursor.execute("SELECT estudiante_id FROM sira.estudiante WHERE estudiante_id = %s", (estudiante_id,))
+        cursor.execute("SELECT estudiante_id FROM estudiante WHERE estudiante_id = %s", (estudiante_id,))
         if not cursor.fetchone():
             cursor.close()
             raise HTTPException(status_code=404, detail="Estudiante no encontrado")
-        cursor.execute("DELETE FROM sira.estudiante WHERE estudiante_id = %s", (estudiante_id,))
+        cursor.execute("DELETE FROM estudiante WHERE estudiante_id = %s", (estudiante_id,))
         db.commit()
         cursor.close()
         return {"message": "Estudiante eliminado"}
@@ -489,17 +455,17 @@ def actualizar_nombre_estudiante(estudiante_id: int, data: dict, db=Depends(get_
         if "nombre" not in data or not data["nombre"]:
             cursor.close()
             raise HTTPException(status_code=400, detail="El nombre no puede estar vacío")
-        cursor.execute("SELECT estudiante_id FROM sira.estudiante WHERE estudiante_id = %s", (estudiante_id,))
+        cursor.execute("SELECT estudiante_id FROM estudiante WHERE estudiante_id = %s", (estudiante_id,))
         if not cursor.fetchone():
             cursor.close()
             raise HTTPException(status_code=404, detail="Estudiante no encontrado")
         cursor.execute(
-            "UPDATE sira.estudiante SET nombre = %s WHERE estudiante_id = %s",
+            "UPDATE estudiante SET nombre = %s WHERE estudiante_id = %s",
             (data["nombre"], estudiante_id)
         )
         db.commit()
         cursor.execute(
-            "SELECT estudiante_id, nombre, correo, carrera_id FROM sira.estudiante WHERE estudiante_id = %s",
+            "SELECT estudiante_id, nombre, correo, carrera_id FROM estudiante WHERE estudiante_id = %s",
             (estudiante_id,)
         )
         estudiante = cursor.fetchone()
@@ -523,8 +489,8 @@ def obtener_recomendaciones_estudiante(estudiante_id: int, db=Depends(get_db)):
                    r.tipo_recomendacion, r.descripcion, r.prioridad, r.estado,
                    r.fecha_creacion, r.fecha_actualizacion, r.enlace_archivo, r.fecha_limite,
                    r.estrellas_docente, r.retroalimentacion_docente
-            FROM sira.recomendacion r
-            LEFT JOIN sira.materia m ON r.materia_id = m.materia_id
+            FROM recomendacion r
+            LEFT JOIN materia m ON r.materia_id = m.materia_id
             WHERE r.estudiante_id = %s
             ORDER BY r.fecha_creacion DESC
         """, (estudiante_id,))
@@ -544,8 +510,8 @@ def obtener_calificaciones_estudiante(estudiante_id: int, db=Depends(get_db)):
             SELECT c.calificacion_id, c.estudiante_id, c.materia_id, m.nombre as materia_nombre,
                    c.nota_parcial1, c.nota_parcial2, c.nota_parcial3, c.nota_final,
                    c.estado, c.semestre, c.creado_en
-            FROM sira.calificacion c
-            JOIN sira.materia m ON c.materia_id = m.materia_id
+            FROM calificacion c
+            JOIN materia m ON c.materia_id = m.materia_id
             WHERE c.estudiante_id = %s
             ORDER BY c.creado_en DESC
         """, (estudiante_id,))
@@ -565,15 +531,15 @@ def obtener_evaluaciones_estudiante(estudiante_id: int, db=Depends(get_db)):
             SELECT e.evaluacion_id, e.titulo, e.descripcion, e.estado,
                    ee.estado as estado_estudiante, ee.fecha_inicio, ee.fecha_fin,
                    ie.respuestas_correctas
-            FROM sira.evaluacion e
-            JOIN sira.recomendacion r ON e.recomendacion_id = r.recomendacion_id
-            LEFT JOIN sira.seguimiento_recomendacion sr
+            FROM evaluacion e
+            JOIN recomendacion r ON e.recomendacion_id = r.recomendacion_id
+            LEFT JOIN seguimiento_recomendacion sr
               ON sr.recomendacion_id = r.recomendacion_id
              AND sr.estudiante_id = %s
-            LEFT JOIN sira.evaluacion_estudiante ee
+            LEFT JOIN evaluacion_estudiante ee
               ON ee.evaluacion_id = e.evaluacion_id
              AND ee.seguimiento_id = sr.seguimiento_id
-            LEFT JOIN sira.intento_evaluacion ie
+            LEFT JOIN intento_evaluacion ie
               ON ie.evaluacion_estudiante_id = ee.evaluacion_estudiante_id
             WHERE r.estudiante_id = %s
             ORDER BY e.creado_en DESC
@@ -592,22 +558,22 @@ def obtener_resultados_estudiante(estudiante_id: int, db=Depends(get_db)):
     try:
         cursor.execute("""
             SELECT AVG(nota_final) as promedio
-            FROM sira.calificacion
+            FROM calificacion
             WHERE estudiante_id = %s AND nota_final IS NOT NULL
         """, (estudiante_id,))
         prom = cursor.fetchone() or {"promedio": None}
 
         cursor.execute("""
             SELECT COUNT(*) as total
-            FROM sira.recomendacion
+            FROM recomendacion
             WHERE estudiante_id = %s AND estado = 'activa'
         """, (estudiante_id,))
         recs = cursor.fetchone() or {"total": 0}
 
         cursor.execute("""
             SELECT COUNT(*) as total
-            FROM sira.evaluacion_estudiante ee
-            JOIN sira.seguimiento_recomendacion sr ON ee.seguimiento_id = sr.seguimiento_id
+            FROM evaluacion_estudiante ee
+            JOIN seguimiento_recomendacion sr ON ee.seguimiento_id = sr.seguimiento_id
             WHERE sr.estudiante_id = %s AND ee.estado = 'finalizada'
         """, (estudiante_id,))
         evals = cursor.fetchone() or {"total": 0}

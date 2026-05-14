@@ -16,6 +16,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copiar código de la aplicación
 COPY backend/ .
 
+# Establecer variables de entorno (opcional)
+ENV DB_HOST=$DB_HOST
+ENV DB_USER=$DB_USER
+ENV DB_PASSWORD=$DB_PASSWORD
+ENV DB_NAME=$DB_NAME
+ENV DB_PORT=$DB_PORT
+
 # Crear archivo .env si no existe (para Render)
 RUN echo "DB_HOST=${DB_HOST:-localhost}\nDB_USER=${DB_USER:-root}\nDB_PASSWORD=${DB_PASSWORD:-}\nDB_NAME=${DB_NAME:-sira}\nDB_PORT=${DB_PORT:-3306}" > .env || true
 

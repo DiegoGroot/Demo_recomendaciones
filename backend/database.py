@@ -1,52 +1,48 @@
 import mysql.connector
-from mysql.connector import pooling
 import os
 
-# ─── Credenciales ────────────────────────────────────────────────────────────
-# En Render define estas variables de entorno en el dashboard del servicio.
-# Para pruebas locales puedes dejar los valores por defecto aquí,
-# pero NO subas contraseñas reales a Git.
+# ─── Credenciales ─────────────────────────────────────────────────────────────
+# En Render define estas variables de entorno en el dashboard.
+# Para local, copia .env.example → .env y llena los valores.
 
-db_config = {
-    "host":     os.getenv("DB_HOST",     "mysql-sira-dieguitogroot-mysql.c.aivencloud.com"),
-    "user":     os.getenv("DB_USER",     "avnadmin"),
-    "password": os.getenv("DB_PASSWORD", "AVNS_pCkFUvAZSqrrPy_Bmq4"),
-    "database": os.getenv("DB_NAME",     "defaultdb"),
-    "port":     int(os.getenv("DB_PORT", "27373")),
-    # Aiven EXIGE SSL — no lo desactives
-    "ssl_disabled": False,
-}
+DB_HOST     = os.getenv("DB_HOST",     "mysql-sira-dieguitogroot-mysql.c.aivencloud.com")
+DB_USER     = os.getenv("DB_USER",     "avnadmin")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "AVNS_pCkFUvAZSqrrPy_Bmq4")
+DB_NAME     = os.getenv("DB_NAME",     "defaultdb")
+DB_PORT     = int(os.getenv("DB_PORT", "27373"))
+DB_SSL_CA   = os.getenv("DB_SSL_CA",   None)
 
-# CA certificate: en Render sube el archivo o pega la ruta en DB_SSL_CA.
-# Si no lo tienes configurado, Aiven igual conecta con ssl_disabled=False
-# (verifica el certificado del servidor usando los CAs del sistema).
-_ssl_ca = os.getenv("DB_SSL_CA", None)
-if _ssl_ca:
-    db_config["ssl_ca"] = _ssl_ca
+# ─── Schema ───────────────────────────────────────────────────────────────────
+# Si tus tablas están en el schema "sira" dentro de defaultdb, este valor es "sira".
+# Si están directamente en defaultdb (sin schema), ponlo vacío: DB_SCHEMA = ""
+DB_SCHEMA = os.getenv("DB_SCHEMA", "sira")
 
-# ─── Pool ─────────────────────────────────────────────────────────────────────
-connection_pool = None
-
-
-def get_pool():
-    global connection_pool
-    if connection_pool is None:
-        try:
-            connection_pool = pooling.MySQLConnectionPool(
-                pool_name="sira_pool",
-                pool_size=10,          # Aiven free tier: máx ~10 conexiones
-                **db_config,
-            )
-            print("✅ Pool de conexiones creado correctamente")
-        except Exception as e:
-            print(f"❌ Error creando el pool: {e}")
-            raise e
-    return connection_pool
+def _build_config():
+    cfg = {
+        "host":         DB_HOST,
+        "user":         DB_USER,
+        "password":     DB_PASSWORD,
+        "database":     DB_NAME,
+        "port":         DB_PORT,
+        "ssl_disabled": False,
+        "connection_timeout": 30,
+        "autocommit":   False,
+    }
+    if DB_SSL_CA:
+        cfg["ssl_ca"] = DB_SSL_CA
+    return cfg
 
 
 def get_db():
-    db = mysql.connector.connect(**db_config)
+    """Dependencia FastAPI: abre una conexión y la cierra al terminar el request."""
+    db = mysql.connector.connect(**_build_config())
+    # Si las tablas están en el schema "sira", lo seleccionamos.
+    if DB_SCHEMA:
+        db.cmd_query(f"USE `{DB_SCHEMA}`")
     try:
         yield db
     finally:
-        db.close()
+        try:
+            db.close()
+        except Exception:
+            pass

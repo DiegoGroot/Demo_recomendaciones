@@ -173,7 +173,6 @@ class _CalificacionesScreenState extends State<CalificacionesScreen> {
     }
 
     int numParciales = cal?.numParciales ?? 2;
-    String estado = cal?.estado ?? 'en_curso';
 
     final p1Ctrl  = TextEditingController(text: cal?.notaParcial1?.toString() ?? '');
     final p2Ctrl  = TextEditingController(text: cal?.notaParcial2?.toString() ?? '');

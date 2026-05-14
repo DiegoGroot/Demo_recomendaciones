@@ -411,7 +411,6 @@ class _MateriasScreenState extends State<MateriasScreen> {
   Widget _materiaCard(Materia m) {
     final carreraNombre = _nombreCarrera(m.carreraId);
     final creditosLabel = '${m.creditos}';
-    final tieneCreditos = m.creditos != null;
     final contenido = (m.contenido ?? '').trim();
 
     return Card(
@@ -437,7 +436,7 @@ class _MateriasScreenState extends State<MateriasScreen> {
                 height: 56,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: tieneCreditos ? Colors.blue.shade700 : Colors.grey.shade400,
+                  color: Colors.blue.shade700,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
@@ -460,7 +459,7 @@ class _MateriasScreenState extends State<MateriasScreen> {
                     Text(
                       'créd.',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.85),
+                        color: Colors.white.withValues(alpha: 0.85),
                         fontSize: 9,
                       ),
                     ),
