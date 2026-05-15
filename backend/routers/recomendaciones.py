@@ -81,6 +81,34 @@ def listar_recomendaciones(
         cursor.close()
         raise HTTPException(status_code=500, detail=f"Error BD: {str(e)}")
 
+@router.get("/{recomendacion_id}")
+def obtener_recomendacion(recomendacion_id: int, db=Depends(get_db)):
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT r.recomendacion_id, r.estudiante_id, e.nombre as estudiante_nombre,
+                   r.materia_id, m.nombre as materia_nombre, r.tipo_recomendacion, r.descripcion,
+                   r.prioridad, r.estado, r.fecha_creacion, r.fecha_actualizacion,
+                   r.enlace_archivo, r.fecha_limite, r.estrellas_docente, r.retroalimentacion_docente
+            FROM sira.recomendacion r
+            LEFT JOIN sira.estudiante e ON r.estudiante_id = e.estudiante_id
+            LEFT JOIN sira.materia m ON r.materia_id = m.materia_id
+            WHERE r.recomendacion_id = %s
+        """, (recomendacion_id,))
+        row = cursor.fetchone()
+        cursor.close()
+        if not row:
+            raise HTTPException(status_code=404, detail="Recomendación no encontrada")
+        for key in ['fecha_creacion', 'fecha_actualizacion', 'fecha_limite']:
+            if row.get(key):
+                row[key] = str(row[key])
+        return row
+    except HTTPException:
+        raise
+    except Exception as e:
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error BD: {str(e)}")
+
 @router.post("", status_code=201)
 def crear_recomendacion(data: RecomendacionCreate, db=Depends(get_db)):
     cursor = db.cursor()

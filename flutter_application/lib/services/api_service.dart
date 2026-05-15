@@ -287,6 +287,9 @@ class ApiService {
   static Future<void> deleteRecomendacion(int id) async =>
       await _delete('/recomendaciones/$id');
 
+  static Future<Map<String, dynamic>> getRecomendacionById(int id) async =>
+      await _get('/recomendaciones/$id') as Map<String, dynamic>;
+
   // ==================== EVALUACIONES ====================
   static Future<List<Map<String, dynamic>>> getEvaluaciones({
     int? recomendacionId,
