@@ -1172,7 +1172,7 @@ def guardar_retroalimentacion(respuesta_id: int, data: RetroalimentacionCreate, 
         # Validar rango de estrellas
         if not (1 <= data.calificacion_estrellas <= 5):
             cursor.close()
-            raise HTTPException(status_code=400, detail="Estrellas deben estar entre 1 y 5")
+            raise HTTPException(status_code=400, detail="Estrellas deben estar entre 0 y 5")
 
         # Actualizar respuesta con retroalimentación
         cursor.execute("""
@@ -1218,7 +1218,7 @@ def actualizar_retroalimentacion(respuesta_id: int, data: RetroalimentacionUpdat
         if data.calificacion_estrellas is not None:
             if not (1 <= data.calificacion_estrellas <= 5):
                 cursor.close()
-                raise HTTPException(status_code=400, detail="Estrellas deben estar entre 1 y 5")
+                raise HTTPException(status_code=400, detail="Estrellas deben estar entre 0 y 5")
             updates.append("calificacion_estrellas = %s")
             params.append(data.calificacion_estrellas)
         
