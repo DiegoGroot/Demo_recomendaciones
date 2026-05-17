@@ -112,6 +112,15 @@ class _EstudiantesScreenState extends State<EstudiantesScreen> {
         .join(', ');
   }
 
+
+  /// Capitaliza la primera letra de cada palabra
+  String _capitalizarNombre(String nombre) {
+    return nombre.split(' ').map((word) {
+      if (word.isEmpty) return word;
+      return word[0].toUpperCase() + word.substring(1).toLowerCase();
+    }).join(' ');
+  }
+
   void _showForm([Estudiante? est]) {
     final nombreCtrl = TextEditingController(text: est?.nombre ?? '');
     final correoCtrl = TextEditingController(text: est?.correo ?? '');
@@ -151,7 +160,7 @@ class _EstudiantesScreenState extends State<EstudiantesScreen> {
               top: 12,
             ),
             decoration: BoxDecoration(
-              color: Theme.of(ctx).dialogBackgroundColor,
+              color: Theme.of(ctx).colorScheme.surface,
               borderRadius: BorderRadius.circular(24),
             ),
             child: Column(
@@ -245,9 +254,11 @@ class _EstudiantesScreenState extends State<EstudiantesScreen> {
                           initialValue: modalidadVal,
                           isExpanded: true,
                           decoration: _deco('Modalidad', Icons.class_),
-                          items: ['Presencial', 'Virtual', 'Híbrida']
-                              .map((m) => DropdownMenuItem(value: m, child: Text(m)))
-                              .toList(),
+                          items: const [
+                            DropdownMenuItem(value: 'presencial', child: Text('Presencial')),
+                            DropdownMenuItem(value: 'virtual', child: Text('Virtual')),
+                            DropdownMenuItem(value: 'hibrida', child: Text('Híbrida')),
+                          ],
                           onChanged: (v) => setS(() => modalidadVal = v),
                         ),
                         const SizedBox(height: 18),
@@ -275,9 +286,11 @@ class _EstudiantesScreenState extends State<EstudiantesScreen> {
                           initialValue: sexoVal,
                           isExpanded: true,
                           decoration: _deco('Sexo', Icons.wc),
-                          items: ['Masculino', 'Femenino', 'Otro', 'Prefiero no decirlo']
-                              .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                              .toList(),
+                          items: const [
+                            DropdownMenuItem(value: 'masculino', child: Text('Masculino')),
+                            DropdownMenuItem(value: 'femenino', child: Text('Femenino')),
+                            DropdownMenuItem(value: 'otro', child: Text('Otro')),
+                          ],
                           onChanged: (v) => setS(() => sexoVal = v),
                         ),
                         const SizedBox(height: 12),
@@ -313,12 +326,23 @@ class _EstudiantesScreenState extends State<EstudiantesScreen> {
                         onPressed: saving
                             ? null
                             : () async {
-                                if (nombreCtrl.text.trim().isEmpty || correoCtrl.text.trim().isEmpty) {
+                                // Validaciones campos requeridos
+                                if (nombreCtrl.text.trim().isEmpty) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Nombre y correo son obligatorios'),
-                                      backgroundColor: Colors.red,
-                                    ),
+                                    const SnackBar(content: Text('El nombre es obligatorio'), backgroundColor: Colors.red),
+                                  );
+                                  return;
+                                }
+                                if (correoCtrl.text.trim().isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('El correo es obligatorio'), backgroundColor: Colors.red),
+                                  );
+                                  return;
+                                }
+                                final emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+');
+                                if (!emailRegex.hasMatch(correoCtrl.text.trim())) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Ingresa un correo válido'), backgroundColor: Colors.red),
                                   );
                                   return;
                                 }
@@ -328,9 +352,21 @@ class _EstudiantesScreenState extends State<EstudiantesScreen> {
                                   );
                                   return;
                                 }
+                                if (est == null && passCtrl.text.trim().length < 4) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('La contraseña debe tener al menos 4 caracteres'), backgroundColor: Colors.red),
+                                  );
+                                  return;
+                                }
                                 if (passCtrl.text.trim().isNotEmpty && passCtrl.text.trim() != pass2Ctrl.text.trim()) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(content: Text('Las contraseñas no coinciden'), backgroundColor: Colors.red),
+                                  );
+                                  return;
+                                }
+                                if (carreraId == null) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Selecciona un programa educativo'), backgroundColor: Colors.red),
                                   );
                                   return;
                                 }
@@ -339,7 +375,7 @@ class _EstudiantesScreenState extends State<EstudiantesScreen> {
                                   final nacionalidadTexto = _joinNacionalidades(nacionalidadesSeleccionadas);
                                   final nuevo = Estudiante(
                                     estudianteId: est?.estudianteId,
-                                    nombre: nombreCtrl.text.trim(),
+                                    nombre: _capitalizarNombre(nombreCtrl.text.trim()),
                                     correo: correoCtrl.text.trim(),
                                     contrasena: passCtrl.text.trim().isNotEmpty ? passCtrl.text.trim() : null,
                                     carreraId: carreraId,
@@ -880,7 +916,7 @@ class _RendimientoDialogState extends State<_RendimientoDialog> {
                                 width: 44,
                                 height: 44,
                                 decoration: BoxDecoration(
-                                  color: color.withOpacity(0.12),
+                                  color: color.withValues(alpha: 0.12),
                                   shape: BoxShape.circle,
                                   border: Border.all(color: color, width: 2),
                                 ),
@@ -931,9 +967,9 @@ class _RendimientoDialogState extends State<_RendimientoDialog> {
                           margin: const EdgeInsets.only(bottom: 8),
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: prioColor.withOpacity(0.06),
+                            color: prioColor.withValues(alpha: 0.06),
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: prioColor.withOpacity(0.3)),
+                            border: Border.all(color: prioColor.withValues(alpha: 0.3)),
                           ),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -944,7 +980,7 @@ class _RendimientoDialogState extends State<_RendimientoDialog> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: prioColor.withOpacity(0.15),
+                                  color: prioColor.withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(

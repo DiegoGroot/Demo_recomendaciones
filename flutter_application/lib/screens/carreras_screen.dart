@@ -247,7 +247,7 @@ class _CarrerasScreenState extends State<CarrerasScreen> {
                                     child: Text(
                                       descripcion.isEmpty ? 'Sin descripción registrada' : descripcion,
                                       style: TextStyle(
-                                        color: Colors.white.withOpacity(0.88),
+                                        color: Colors.white.withValues(alpha: 0.88),
                                         fontSize: 12.5,
                                         height: 1.25,
                                       ),
@@ -271,7 +271,7 @@ class _CarrerasScreenState extends State<CarrerasScreen> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      color: Colors.white.withOpacity(0.9),
+                                      color: Colors.white.withValues(alpha: 0.9),
                                       fontSize: 11,
                                     ),
                                   ),
