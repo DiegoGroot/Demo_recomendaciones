@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional
 from database import get_db
 
@@ -21,9 +21,30 @@ class CalificacionCreate(BaseModel):
     @field_validator('parcial1', 'parcial2', 'parcial3', 'nota_final', mode='before')
     @classmethod
     def validar_rango(cls, v):
+        """Valida que todas las notas estén en rango 0-10."""
         if v is not None and not (0 <= float(v) <= 10):
             raise ValueError('La nota debe estar entre 0 y 10')
         return v
+    
+    @model_validator(mode='after')
+    def validar_parciales(self):
+        """Valida que haya al menos un parcial y que num_parciales sea coherente."""
+        parciales = [self.parcial1, self.parcial2, self.parcial3]
+        parciales_ingresados = [p for p in parciales if p is not None]
+        
+        if not parciales_ingresados:
+            raise ValueError('Debe ingresarse al menos una calificación parcial')
+        
+        if self.num_parciales and self.num_parciales < 1:
+            raise ValueError('num_parciales debe ser al menos 1')
+        
+        if self.num_parciales and len(parciales_ingresados) > self.num_parciales:
+            raise ValueError(
+                f'Se ingresaron {len(parciales_ingresados)} parciales pero '
+                f'num_parciales es {self.num_parciales}'
+            )
+        
+        return self
 
 
 class CalificacionUpdate(BaseModel):
@@ -39,16 +60,35 @@ class CalificacionUpdate(BaseModel):
     @field_validator('parcial1', 'parcial2', 'parcial3', 'nota_final', mode='before')
     @classmethod
     def validar_rango(cls, v):
+        """Valida que todas las notas estén en rango 0-10."""
         if v is not None and not (0 <= float(v) <= 10):
             raise ValueError('La nota debe estar entre 0 y 10')
         return v
 
 
 def calcular_promedio(parciales: list, nota_final=None):
+    """
+    Calcula el promedio de calificaciones parciales.
+    
+    Args:
+        parciales: Lista de calificaciones parciales
+        nota_final: Nota final opcional. Si se proporciona, se retorna sin cálculo.
+        
+    Returns:
+        float: Promedio redondeado a 2 decimales
+        
+    Raises:
+        ValueError: Si no hay parciales para calcular
+    """
     if nota_final is not None:
         return round(float(nota_final), 2)
+    
     vals = [v for v in parciales if v is not None]
-    return round(sum(vals) / len(vals), 2) if vals else None  # None en vez de 0 para evitar constraint
+    
+    if not vals:
+        raise ValueError("Se requiere al menos una calificación parcial para calcular el promedio")
+    
+    return round(sum(vals) / len(vals), 2)
 
 
 def auto_estado(nota_final: float) -> str:

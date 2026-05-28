@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from database import get_db
 from mysql.connector import errors as mysql_errors
+from auth_utils import hash_password, verify_password
 
 router = APIRouter()
 
@@ -16,6 +17,12 @@ class EstudianteCreate(BaseModel):
     edad: Optional[int] = None
     codigo_estudiante: Optional[str] = None
     materias_ids: Optional[List[int]] = None
+    semestre_actual: Optional[int] = None
+    matricula: Optional[str] = None
+    modalidad: Optional[str] = None
+    sexo: Optional[str] = None
+    nacionalidad: Optional[str] = None
+    direccion: Optional[str] = None
 
 
 class EstudianteUpdate(BaseModel):
@@ -27,6 +34,12 @@ class EstudianteUpdate(BaseModel):
     edad: Optional[int] = None
     codigo_estudiante: Optional[str] = None
     materias_ids: Optional[List[int]] = None
+    semestre_actual: Optional[int] = None
+    matricula: Optional[str] = None
+    modalidad: Optional[str] = None
+    sexo: Optional[str] = None
+    nacionalidad: Optional[str] = None
+    direccion: Optional[str] = None
 
 
 class LoginData(BaseModel):
@@ -35,13 +48,24 @@ class LoginData(BaseModel):
 
 
 def _columnas_existentes(cursor) -> set:
-    cursor.execute("""
-        SELECT COLUMN_NAME
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'estudiante'
-    """)
-    return {row['COLUMN_NAME'] for row in cursor.fetchall()}
+    # Usar SHOW COLUMNS es más confiable en Aiven/MySQL con schemas
+    try:
+        cursor.execute("SHOW COLUMNS FROM estudiante")
+        rows = cursor.fetchall()
+        # SHOW COLUMNS retorna dict con 'Field' o tuple[0]
+        if rows and isinstance(rows[0], dict):
+            return {row['Field'] for row in rows}
+        return {row[0] for row in rows}
+    except Exception:
+        # Fallback a INFORMATION_SCHEMA
+        cursor.execute("""
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_NAME = 'estudiante'
+              AND TABLE_SCHEMA IN (DATABASE(), 'sira', 'defaultdb')
+        """)
+        return {row['COLUMN_NAME'] if isinstance(row, dict) else row[0]
+                for row in cursor.fetchall()}
 
 
 def _build_select(cols: set) -> str:
@@ -52,19 +76,33 @@ def _build_select(cols: set) -> str:
         'promedio_general': 'e.promedio_general',
         'estado_academico': 'e.estado_academico',
         'codigo_estudiante': 'e.codigo_estudiante',
+        'semestre_actual': 'e.semestre_actual',
+        'matricula': 'e.matricula',
+        'modalidad': 'e.modalidad',
+        'sexo': 'e.sexo',
+        'nacionalidad': 'e.nacionalidad',
+        'direccion': 'e.direccion',
     }
     extras = ", ".join(v for k, v in opcionales.items() if k in cols)
     return f"{base}{', ' + extras if extras else ''}"
 
 
 def _columnas_tabla(cursor, tabla: str) -> set:
-    cursor.execute("""
-        SELECT COLUMN_NAME
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = %s
-    """, (tabla,))
-    return {row['COLUMN_NAME'] for row in cursor.fetchall()}
+    try:
+        cursor.execute(f"SHOW COLUMNS FROM {tabla}")
+        rows = cursor.fetchall()
+        if rows and isinstance(rows[0], dict):
+            return {row['Field'] for row in rows}
+        return {row[0] for row in rows}
+    except Exception:
+        cursor.execute("""
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_NAME = %s
+              AND TABLE_SCHEMA IN (DATABASE(), 'sira', 'defaultdb')
+        """, (tabla,))
+        return {row['COLUMN_NAME'] if isinstance(row, dict) else row[0]
+                for row in cursor.fetchall()}
 
 
 def _anio_actual() -> int:
@@ -160,6 +198,23 @@ def _limpiar_texto(valor: Optional[str]) -> Optional[str]:
     return valor if valor else None
 
 
+
+def _password_ok(password: str, stored_password: str) -> bool:
+    if not stored_password:
+        return False
+    if stored_password.startswith("$2a$") or stored_password.startswith("$2b$") or stored_password.startswith("$2y$"):
+        return verify_password(password, stored_password)
+    return password == stored_password
+
+
+def _is_bcrypt(stored_password: str) -> bool:
+    return bool(stored_password) and (
+        stored_password.startswith("$2a$")
+        or stored_password.startswith("$2b$")
+        or stored_password.startswith("$2y$")
+    )
+
+
 def _normalizar_nacionalidades(valor: Optional[str]) -> Optional[str]:
     valor = _limpiar_texto(valor)
     if not valor:
@@ -184,23 +239,38 @@ def login(data: LoginData, db=Depends(get_db)):
     try:
         correo = data.correo.strip().lower()
         contrasena = data.contrasena.strip()
+
         cursor.execute("""
-            SELECT e.estudiante_id, e.nombre, e.correo, e.carrera_id,
-                   c.nombre AS carrera, e.semestre_actual,
+            SELECT e.estudiante_id, e.nombre, e.correo, e.contrasena,
+                   e.carrera_id, c.nombre AS carrera, e.semestre_actual,
                    e.sexo, e.nacionalidad, e.modalidad
             FROM estudiante e
             LEFT JOIN carrera c ON e.carrera_id = c.carrera_id
-            WHERE LOWER(TRIM(e.correo)) = %s AND e.contrasena = %s
+            WHERE LOWER(TRIM(e.correo)) = %s
             LIMIT 1
-        """, (correo, contrasena))
+        """, (correo,))
         user = cursor.fetchone()
-        cursor.close()
-        if not user:
+
+        if not user or not _password_ok(contrasena, user.get("contrasena")):
+            cursor.close()
             raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos")
+
+        # Migración silenciosa para usuarios viejos en texto plano.
+        if not _is_bcrypt(user.get("contrasena")):
+            cursor.execute(
+                "UPDATE estudiante SET contrasena = %s WHERE estudiante_id = %s",
+                (hash_password(contrasena), user["estudiante_id"]),
+            )
+            db.commit()
+
+        user.pop("contrasena", None)
+        cursor.close()
         return {"message": "Login exitoso", "estudiante": user, "user": user, "rol": "estudiante"}
     except HTTPException:
+        db.rollback()
         raise
     except Exception as e:
+        db.rollback()
         cursor.close()
         raise HTTPException(status_code=500, detail=f"Error en login: {str(e)}")
 
@@ -247,7 +317,7 @@ def crear_estudiante(data: EstudianteCreate, db=Depends(get_db)):
         campos = {
             "nombre": data.nombre.strip(),
             "correo": data.correo.strip(),
-            "contrasena": data.contrasena,
+            "contrasena": hash_password(data.contrasena),
             "carrera_id": carrera,
         }
 
@@ -255,6 +325,12 @@ def crear_estudiante(data: EstudianteCreate, db=Depends(get_db)):
             'fecha_nacimiento': _limpiar_texto(data.fecha_nacimiento),
             'edad': data.edad,
             'codigo_estudiante': _limpiar_texto(data.codigo_estudiante),
+            'semestre_actual': data.semestre_actual,
+            'matricula': _limpiar_texto(data.matricula),
+            'modalidad': _limpiar_texto(data.modalidad),
+            'sexo': _limpiar_texto(data.sexo),
+            'nacionalidad': _normalizar_nacionalidades(data.nacionalidad),
+            'direccion': _limpiar_texto(data.direccion),
         }
 
         for col, val in opcionales.items():
@@ -360,8 +436,10 @@ def actualizar_estudiante(estudiante_id: int, data: EstudianteUpdate, db=Depends
         for k, v in raw.items():
             if k not in cols:
                 continue
-            if k == 'contrasena' and not v:
-                continue
+            if k == 'contrasena':
+                if not v:
+                    continue
+                v = hash_password(v)
             # Si es campo de texto y quedó None tras limpiar, no incluirlo (evita "Sin datos")
             if k in campos_texto and v is None:
                 continue

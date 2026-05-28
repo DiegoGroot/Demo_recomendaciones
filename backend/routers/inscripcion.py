@@ -36,11 +36,11 @@ def listar_inscripciones(
                    i.estado, i.fecha_inscripcion,
                    e.nombre as estudiante_nombre,
                    m.nombre as materia_nombre,
-                   c.nombre as calificacion_id
+                   cal.calificacion_id
             FROM sira.inscripcion i
             JOIN sira.estudiante e ON i.estudiante_id = e.estudiante_id
             JOIN sira.materia m ON i.materia_id = m.materia_id
-            LEFT JOIN sira.calificacion c ON i.inscripcion_id = c.inscripcion_id
+            LEFT JOIN sira.calificacion cal ON i.inscripcion_id = cal.inscripcion_id
             WHERE 1=1
         """
         params = []

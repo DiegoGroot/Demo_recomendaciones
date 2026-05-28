@@ -3,7 +3,9 @@ from pydantic import BaseModel
 from typing import Optional
 from database import get_db
 from mysql.connector import errors as mysql_errors
-from utils import generar_recomendaciones_por_calificacion
+from utils import generar_recomendacion_automatica, validar_nota_para_recomendacion
+from exceptions import ValidationException, ResourceNotFoundException
+from enums import TipoRecomendacion, PrioridadRecomendacion
 
 router = APIRouter()
 
@@ -189,13 +191,23 @@ def generar_recomendacion_por_calificacion(calificacion_id: int, db=Depends(get_
         
         if not cal:
             cursor.close()
-            raise HTTPException(status_code=404, detail="Calificación no encontrada")
+            raise ResourceNotFoundException("Calificación", calificacion_id)
+        
         if cal['estado'] == 'en_curso':
             cursor.close()
-            raise HTTPException(status_code=400, detail="La calificación debe estar finalizada")
+            raise ValidationException("La calificación debe estar finalizada antes de generar recomendación")
         
-        rec_data = generar_recomendaciones_por_calificacion(
-            cal['nota_final'], cal['estudiante_id'], cal['materia_id']
+        # Validar nota
+        es_valida, msg_error = validar_nota_para_recomendacion(cal['nota_final'])
+        if not es_valida:
+            cursor.close()
+            raise ValidationException(msg_error)
+        
+        # Generar recomendación con nueva función
+        rec_data = generar_recomendacion_automatica(
+            cal['nota_final'], 
+            cal['estudiante_id'], 
+            cal['materia_id']
         )
         
         cursor.execute("""
@@ -236,13 +248,13 @@ def generar_recomendacion_por_calificacion(calificacion_id: int, db=Depends(get_
         resultado = cursor.fetchone()
         cursor.close()
         return resultado
-    except HTTPException:
+    except (ResourceNotFoundException, ValidationException):
         cursor.close()
         raise
     except Exception as e:
         db.rollback()
         cursor.close()
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al generar recomendación: {str(e)}")
 
 @router.post("/{recomendacion_id}/calificar")
 def calificar_recomendacion(recomendacion_id: int, body: dict, db=Depends(get_db)):
