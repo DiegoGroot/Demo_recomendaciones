@@ -137,43 +137,72 @@ def listar_evaluaciones(
 
 @router.get("/estudiante/{estudiante_id}")
 def evaluaciones_por_estudiante(estudiante_id: int, db=Depends(get_db)):
+    """
+    FIX: Busca evaluaciones directamente por recomendacion.estudiante_id,
+    sin depender de seguimiento_recomendacion que puede no existir.
+    Marca ya_respondida=True si hay un evaluacion_estudiante finalizado
+    vinculado a esa evaluación para este estudiante (por cualquiera de
+    las dos rutas: seguimiento o directo).
+    """
     cursor = db.cursor(dictionary=True)
     try:
+        # Query principal: directo por recomendacion.estudiante_id (siempre funciona)
         cursor.execute("""
-            SELECT e.evaluacion_id, e.recomendacion_id, e.titulo, e.descripcion,
-                   e.estado, e.creado_en,
-                   r.tipo_recomendacion, r.prioridad,
-                   (
-                     SELECT COUNT(*) FROM sira.evaluacion_estudiante ee2
-                     WHERE ee2.evaluacion_id = e.evaluacion_id
-                       AND ee2.estado = 'finalizada'
-                       AND ee2.seguimiento_id = sr.seguimiento_id
-                   ) as ya_respondida
+            SELECT
+                e.evaluacion_id,
+                e.recomendacion_id,
+                e.titulo,
+                e.descripcion,
+                e.estado,
+                e.creado_en,
+                r.tipo_recomendacion,
+                r.prioridad,
+                -- ya_respondida: tiene evaluacion_estudiante finalizada
+                -- ya sea por seguimiento o por cualquier ee del mismo eval+estudiante
+                COALESCE((
+                    SELECT COUNT(*)
+                    FROM sira.evaluacion_estudiante ee
+                    LEFT JOIN sira.seguimiento_recomendacion sr
+                        ON ee.seguimiento_id = sr.seguimiento_id
+                    WHERE ee.evaluacion_id = e.evaluacion_id
+                      AND ee.estado = 'finalizada'
+                      AND (sr.estudiante_id = %s OR ee.seguimiento_id IN (
+                            SELECT seguimiento_id FROM sira.seguimiento_recomendacion
+                            WHERE estudiante_id = %s
+                      ))
+                ), 0) as ya_respondida
             FROM sira.evaluacion e
             JOIN sira.recomendacion r ON e.recomendacion_id = r.recomendacion_id
-            JOIN sira.seguimiento_recomendacion sr ON r.recomendacion_id = sr.recomendacion_id
-            WHERE sr.estudiante_id = %s
+            WHERE r.estudiante_id = %s
               AND e.estado = 'activa'
             ORDER BY e.creado_en DESC
-        """, (estudiante_id,))
+        """, (estudiante_id, estudiante_id, estudiante_id))
         result = cursor.fetchall()
 
+        # Fallback por seguimiento_recomendacion (por si acaso)
         if not result:
             cursor.execute("""
-                SELECT e.evaluacion_id, e.recomendacion_id, e.titulo, e.descripcion,
-                       e.estado, e.creado_en,
-                       r.tipo_recomendacion, r.prioridad,
-                       (
-                         SELECT COUNT(*) FROM sira.evaluacion_estudiante ee2
-                         JOIN sira.seguimiento_recomendacion sr2
-                           ON ee2.seguimiento_id = sr2.seguimiento_id
-                         WHERE ee2.evaluacion_id = e.evaluacion_id
-                           AND ee2.estado = 'finalizada'
-                           AND sr2.estudiante_id = %s
-                       ) as ya_respondida
+                SELECT
+                    e.evaluacion_id,
+                    e.recomendacion_id,
+                    e.titulo,
+                    e.descripcion,
+                    e.estado,
+                    e.creado_en,
+                    r.tipo_recomendacion,
+                    r.prioridad,
+                    COALESCE((
+                        SELECT COUNT(*) FROM sira.evaluacion_estudiante ee2
+                        JOIN sira.seguimiento_recomendacion sr2
+                          ON ee2.seguimiento_id = sr2.seguimiento_id
+                        WHERE ee2.evaluacion_id = e.evaluacion_id
+                          AND ee2.estado = 'finalizada'
+                          AND sr2.estudiante_id = %s
+                    ), 0) as ya_respondida
                 FROM sira.evaluacion e
                 JOIN sira.recomendacion r ON e.recomendacion_id = r.recomendacion_id
-                WHERE r.estudiante_id = %s
+                JOIN sira.seguimiento_recomendacion sr ON r.recomendacion_id = sr.recomendacion_id
+                WHERE sr.estudiante_id = %s
                   AND e.estado = 'activa'
                 ORDER BY e.creado_en DESC
             """, (estudiante_id, estudiante_id))
@@ -614,9 +643,24 @@ def iniciar_evaluacion(data: IniciarEvaluacionCreate, db=Depends(get_db)):
             LIMIT 1
         """, (data.evaluacion_id, data.estudiante_id))
         seguimiento = cursor.fetchone()
+
+        # FIX: si no existe seguimiento, crearlo automáticamente
         if not seguimiento:
-            cursor.close()
-            raise HTTPException(status_code=404, detail="Seguimiento no encontrado")
+            cursor.execute(
+                "SELECT recomendacion_id FROM sira.evaluacion WHERE evaluacion_id = %s",
+                (data.evaluacion_id,)
+            )
+            eval_info = cursor.fetchone()
+            if not eval_info:
+                cursor.close()
+                raise HTTPException(status_code=404, detail="Evaluación no encontrada")
+            cursor.execute("""
+                INSERT INTO sira.seguimiento_recomendacion
+                    (recomendacion_id, estudiante_id, recomendacion_visualizada)
+                VALUES (%s, %s, 1)
+            """, (eval_info['recomendacion_id'], data.estudiante_id))
+            db.commit()
+            seguimiento = {'seguimiento_id': cursor.lastrowid}
 
         seguimiento_id = seguimiento['seguimiento_id']
 
