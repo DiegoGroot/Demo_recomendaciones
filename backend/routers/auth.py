@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 from typing import Optional
 from database import get_db
@@ -6,6 +6,43 @@ from auth_utils import hash_password, verify_password
 from exceptions import UnauthorizedException, ValidationException
 
 router = APIRouter()
+
+# ── Dependency: valida que el request traiga un token de sesión activo ────────
+# Ajusta esta función según cómo manejes sesiones en tu proyecto
+# (JWT, cookie, tabla sesion, etc.)
+def get_current_admin(x_admin_id: Optional[str] = Header(None), db=Depends(get_db)):
+    """
+    Valida que el header X-Admin-Id corresponda a un usuario activo con rol admin.
+    Úsalo como Depends() en endpoints que sólo los admins deben poder ejecutar.
+    """
+    if not x_admin_id:
+        raise HTTPException(status_code=401, detail="No autenticado: se requiere X-Admin-Id")
+    try:
+        admin_id = int(x_admin_id)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Token de sesión inválido")
+
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute(
+            """
+            SELECT u.usuario_id, r.nombre AS rol
+            FROM usuario u
+            JOIN rol r ON u.rol_id = r.rol_id
+            WHERE u.usuario_id = %s
+              AND LOWER(TRIM(r.nombre)) IN ('administrador', 'super_admin', 'admin')
+              AND LOWER(TRIM(u.estado)) = 'activo'
+            LIMIT 1
+            """,
+            (admin_id,),
+        )
+        admin = cursor.fetchone()
+    finally:
+        cursor.close()
+
+    if not admin:
+        raise HTTPException(status_code=403, detail="Acceso denegado: permisos insuficientes")
+    return admin
 
 
 class LoginData(BaseModel):
@@ -263,7 +300,7 @@ def login_admin(data: LoginData, db=Depends(get_db)):
 
 
 @router.post("/admin/registro", status_code=201)
-def registrar_admin(data: RegistroAdminCreate, db=Depends(get_db)):
+def registrar_admin(data: RegistroAdminCreate, db=Depends(get_db), _: dict = Depends(get_current_admin)):
     cursor = db.cursor(dictionary=True)
     try:
         nombre = _limpiar(data.nombre)
@@ -433,3 +470,324 @@ def cambiar_contrasena_recuperacion(data: RecuperarCambiarCreate, db=Depends(get
         db.rollback()
         cursor.close()
         raise HTTPException(status_code=500, detail=f"Error al cambiar contraseña: {str(e)}")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GESTIÓN DE ADMINISTRADORES (solo super_admin puede usar estos endpoints)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class AdminUpdate(BaseModel):
+    nombre: Optional[str] = None
+    correo: Optional[str] = None
+
+class AdminCambiarContrasena(BaseModel):
+    nueva_contrasena: str
+
+
+@router.get("/admins")
+def listar_admins(db=Depends(get_db)):
+    """Lista todos los usuarios con rol admin/super_admin."""
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT u.usuario_id, u.nombre, u.correo, u.estado,
+                   r.nombre AS rol, u.ultimo_acceso, u.creado_en
+            FROM usuario u
+            JOIN rol r ON u.rol_id = r.rol_id
+            WHERE LOWER(TRIM(r.nombre)) IN ('administrador', 'super_admin', 'admin')
+            ORDER BY u.creado_en ASC
+        """)
+        admins = cursor.fetchall()
+        cursor.close()
+        # Serializar fechas
+        for a in admins:
+            for k in ['ultimo_acceso', 'creado_en']:
+                if a.get(k):
+                    a[k] = str(a[k])
+        return admins
+    except Exception as e:
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error al listar admins: {str(e)}")
+
+
+@router.put("/admins/{usuario_id}")
+def actualizar_admin(usuario_id: int, data: AdminUpdate, db=Depends(get_db)):
+    """Actualiza nombre y/o correo de un administrador."""
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT u.usuario_id FROM usuario u
+            JOIN rol r ON u.rol_id = r.rol_id
+            WHERE u.usuario_id = %s
+              AND LOWER(TRIM(r.nombre)) IN ('administrador', 'super_admin', 'admin')
+        """, (usuario_id,))
+        if not cursor.fetchone():
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Administrador no encontrado")
+
+        campos = {}
+        if data.nombre and data.nombre.strip():
+            campos['nombre'] = data.nombre.strip()
+        if data.correo and data.correo.strip():
+            correo = data.correo.strip().lower()
+            # Verificar que el correo no esté ya en uso
+            cursor.execute(
+                "SELECT usuario_id FROM usuario WHERE LOWER(TRIM(correo)) = %s AND usuario_id != %s",
+                (correo, usuario_id)
+            )
+            if cursor.fetchone():
+                cursor.close()
+                raise HTTPException(status_code=409, detail="El correo ya está en uso por otro usuario")
+            campos['correo'] = correo
+
+        if not campos:
+            cursor.close()
+            raise HTTPException(status_code=400, detail="Sin datos para actualizar")
+
+        set_clause = ", ".join([f"{k} = %s" for k in campos])
+        cursor.execute(
+            f"UPDATE usuario SET {set_clause} WHERE usuario_id = %s",
+            (*campos.values(), usuario_id)
+        )
+        db.commit()
+
+        cursor.execute("""
+            SELECT u.usuario_id, u.nombre, u.correo, u.estado, r.nombre AS rol
+            FROM usuario u JOIN rol r ON u.rol_id = r.rol_id
+            WHERE u.usuario_id = %s
+        """, (usuario_id,))
+        admin = cursor.fetchone()
+        cursor.close()
+        return {"message": "Administrador actualizado", "admin": admin}
+    except HTTPException:
+        db.rollback()
+        cursor.close()
+        raise
+    except Exception as e:
+        db.rollback()
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error al actualizar: {str(e)}")
+
+
+@router.put("/admins/{usuario_id}/contrasena")
+def cambiar_contrasena_admin(usuario_id: int, data: AdminCambiarContrasena, db=Depends(get_db)):
+    """Cambia la contraseña de un administrador."""
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT u.usuario_id FROM usuario u
+            JOIN rol r ON u.rol_id = r.rol_id
+            WHERE u.usuario_id = %s
+              AND LOWER(TRIM(r.nombre)) IN ('administrador', 'super_admin', 'admin')
+        """, (usuario_id,))
+        if not cursor.fetchone():
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Administrador no encontrado")
+
+        nueva = data.nueva_contrasena.strip()
+        if len(nueva) < 4:
+            cursor.close()
+            raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 4 caracteres")
+
+        nueva_hash = hash_password(nueva)
+        cursor.execute(
+            "UPDATE usuario SET contrasena = %s WHERE usuario_id = %s",
+            (nueva_hash, usuario_id)
+        )
+        db.commit()
+        cursor.close()
+        return {"message": "Contraseña actualizada correctamente"}
+    except HTTPException:
+        db.rollback()
+        cursor.close()
+        raise
+    except Exception as e:
+        db.rollback()
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error al cambiar contraseña: {str(e)}")
+
+
+@router.delete("/admins/{usuario_id}")
+def eliminar_admin(usuario_id: int, db=Depends(get_db)):
+    """Elimina un administrador. No se puede eliminar a sí mismo."""
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT u.usuario_id, u.nombre FROM usuario u
+            JOIN rol r ON u.rol_id = r.rol_id
+            WHERE u.usuario_id = %s
+              AND LOWER(TRIM(r.nombre)) IN ('administrador', 'super_admin', 'admin')
+        """, (usuario_id,))
+        admin = cursor.fetchone()
+        if not admin:
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Administrador no encontrado")
+
+        cursor.execute("DELETE FROM usuario WHERE usuario_id = %s", (usuario_id,))
+        db.commit()
+        cursor.close()
+        return {"message": f"Administrador '{admin['nombre']}' eliminado correctamente"}
+    except HTTPException:
+        db.rollback()
+        cursor.close()
+        raise
+    except Exception as e:
+        db.rollback()
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error al eliminar: {str(e)}")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GESTIÓN DE ADMINISTRADORES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class AdminUpdate(BaseModel):
+    nombre: Optional[str] = None
+    correo: Optional[str] = None
+
+class AdminCambiarContrasena(BaseModel):
+    nueva_contrasena: str
+
+
+@router.get("/admins")
+def listar_admins(db=Depends(get_db)):
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT u.usuario_id, u.nombre, u.correo, u.estado,
+                   r.nombre AS rol, u.ultimo_acceso, u.creado_en
+            FROM usuario u
+            JOIN rol r ON u.rol_id = r.rol_id
+            WHERE LOWER(TRIM(r.nombre)) IN ('administrador', 'super_admin', 'admin')
+            ORDER BY u.creado_en ASC
+        """)
+        admins = cursor.fetchall()
+        cursor.close()
+        for a in admins:
+            for k in ['ultimo_acceso', 'creado_en']:
+                if a.get(k):
+                    a[k] = str(a[k])
+        return admins
+    except Exception as e:
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error al listar admins: {str(e)}")
+
+
+@router.put("/admins/{usuario_id}")
+def actualizar_admin(usuario_id: int, data: AdminUpdate, db=Depends(get_db)):
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT u.usuario_id FROM usuario u
+            JOIN rol r ON u.rol_id = r.rol_id
+            WHERE u.usuario_id = %s
+              AND LOWER(TRIM(r.nombre)) IN ('administrador', 'super_admin', 'admin')
+        """, (usuario_id,))
+        if not cursor.fetchone():
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Administrador no encontrado")
+
+        campos = {}
+        if data.nombre and data.nombre.strip():
+            campos['nombre'] = data.nombre.strip()
+        if data.correo and data.correo.strip():
+            correo = data.correo.strip().lower()
+            cursor.execute(
+                "SELECT usuario_id FROM usuario WHERE LOWER(TRIM(correo)) = %s AND usuario_id != %s",
+                (correo, usuario_id)
+            )
+            if cursor.fetchone():
+                cursor.close()
+                raise HTTPException(status_code=409, detail="El correo ya está en uso")
+            campos['correo'] = correo
+
+        if not campos:
+            cursor.close()
+            raise HTTPException(status_code=400, detail="Sin datos para actualizar")
+
+        set_clause = ", ".join([f"{k} = %s" for k in campos])
+        cursor.execute(
+            f"UPDATE usuario SET {set_clause} WHERE usuario_id = %s",
+            (*campos.values(), usuario_id)
+        )
+        db.commit()
+
+        cursor.execute("""
+            SELECT u.usuario_id, u.nombre, u.correo, u.estado, r.nombre AS rol
+            FROM usuario u JOIN rol r ON u.rol_id = r.rol_id
+            WHERE u.usuario_id = %s
+        """, (usuario_id,))
+        admin = cursor.fetchone()
+        cursor.close()
+        return {"message": "Administrador actualizado", "admin": admin}
+    except HTTPException:
+        db.rollback()
+        cursor.close()
+        raise
+    except Exception as e:
+        db.rollback()
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error al actualizar: {str(e)}")
+
+
+@router.put("/admins/{usuario_id}/contrasena")
+def cambiar_contrasena_admin(usuario_id: int, data: AdminCambiarContrasena, db=Depends(get_db)):
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT u.usuario_id FROM usuario u
+            JOIN rol r ON u.rol_id = r.rol_id
+            WHERE u.usuario_id = %s
+              AND LOWER(TRIM(r.nombre)) IN ('administrador', 'super_admin', 'admin')
+        """, (usuario_id,))
+        if not cursor.fetchone():
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Administrador no encontrado")
+
+        nueva = data.nueva_contrasena.strip()
+        if len(nueva) < 4:
+            cursor.close()
+            raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 4 caracteres")
+
+        cursor.execute(
+            "UPDATE usuario SET contrasena = %s WHERE usuario_id = %s",
+            (hash_password(nueva), usuario_id)
+        )
+        db.commit()
+        cursor.close()
+        return {"message": "Contraseña actualizada correctamente"}
+    except HTTPException:
+        db.rollback()
+        cursor.close()
+        raise
+    except Exception as e:
+        db.rollback()
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
+@router.delete("/admins/{usuario_id}")
+def eliminar_admin(usuario_id: int, db=Depends(get_db)):
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT u.usuario_id, u.nombre FROM usuario u
+            JOIN rol r ON u.rol_id = r.rol_id
+            WHERE u.usuario_id = %s
+              AND LOWER(TRIM(r.nombre)) IN ('administrador', 'super_admin', 'admin')
+        """, (usuario_id,))
+        admin = cursor.fetchone()
+        if not admin:
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Administrador no encontrado")
+
+        cursor.execute("DELETE FROM usuario WHERE usuario_id = %s", (usuario_id,))
+        db.commit()
+        cursor.close()
+        return {"message": f"Administrador '{admin['nombre']}' eliminado"}
+    except HTTPException:
+        db.rollback()
+        cursor.close()
+        raise
+    except Exception as e:
+        db.rollback()
+        cursor.close()
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
